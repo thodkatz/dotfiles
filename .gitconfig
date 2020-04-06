@@ -1,0 +1,7 @@
+[rerere]
+	enabled = true
+[user]
+	email = thodkatz@gmail.com
+	name = thodkatz
+[merge]
+	tool = meld

@@ -1,0 +1,6 @@
+# youtube-dl is a tool that can download videos mostly from Youtube and other sites
+# this is the config file for the user
+# TODO: Need to create a symlink
+
+# Save all videos 
+-o ~/MEGA/Music/%(title)s.%(ext)s
