@@ -128,8 +128,8 @@ assign [class="tilix"] $workspace1
 assign [class="Firefox"] $workspace2
 assign [class="Mattermost"] $workspace3 
 assign [class="Viber"] $workspace4
-assign [class="Evince"] $workspace5
-assign [class="^Zathura$"] $workspace5
+#assign [class="Evince"] $workspace5
+#assign [class="^Zathura$"] $workspace5
 assign [class="vlc"] $workspace6
 # there is a bug for Spotify in order to assign it to a workspace, so I am using this command
 for_window [class="Spotify"] move to workspace $workspace6

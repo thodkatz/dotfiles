@@ -3,4 +3,4 @@
 # TODO: Need to create a symlink
 
 # Save all videos 
--o ~/MEGA/Music/%(title)s.%(ext)s
+-o ~/MEGA/Videos/full_stack_academy/express_var/%(title)s.%(ext)s
