@@ -1,10 +1,3 @@
-set relativenumber
-
-set textwidth=160
-
-syntax on
-
-
 set nocompatible              " be iMproved, required
 filetype off                  " required
 
@@ -25,6 +18,18 @@ Plugin 'junegunn/goyo.vim'
 
 Plugin 'vimwiki/vimwiki'
 
+Plugin 'lervag/vimtex'
+
+Plugin 'xuhdev/vim-latex-live-preview'
+let g:livepreview_previewer = 'zathura'
+
+Plugin 'jamshedvesuna/vim-markdown-preview'
+let vim_markdown_preview_browser='surf'
+let vim_markdown_preview_hotkey='<C-m>'
+let vim_markdown_preview_github=1
+
+
+
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
 filetype plugin indent on    " required
@@ -39,3 +44,7 @@ filetype plugin indent on    " required
 "
 " see :h vundle for more details or wiki for FAQ
 " Put your non-Plugin stuff after this line
+
+set relativenumber
+
+syntax on
