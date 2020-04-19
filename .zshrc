@@ -106,6 +106,8 @@ source $ZSH/oh-my-zsh.sh
 alias clion="~/opt/clion-2019.1.4/bin/clion.sh"
 alias viber="/opt/viber/Viber"
 alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/preamble/templates/article.tex source.tex"
+alias cat="bat"
+alias find="fd"
 
 export JAVA_HOME=/home/vash/Java/openjdk-12.0.2_linux-x64_bin/jdk-12.0.2
 
@@ -115,4 +117,6 @@ export PATH=/home/vash/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sb
 
 #echo "Love & Peace"
 cowsay -f tux "Love & Peace" | lolcat
+
+[[ -s ~/.autojump/etc/profile.d/autojump.sh ]] && . ~/.autojump/etc/profile.d/autojump.sh
 

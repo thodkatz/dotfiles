@@ -5,3 +5,5 @@
 	name = thodkatz
 [merge]
 	tool = meld
+[core]
+	pager = diff-so-fancy | less --tabs=4 -RFX
