@@ -109,6 +109,9 @@ alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/preamble/templates
 alias cat="bat"
 alias find="fd"
 
+
+bindkey -s '^o' 'vim $(fzf --preview="bat {} --color=always")\n'
+
 export JAVA_HOME=/home/vash/Java/openjdk-12.0.2_linux-x64_bin/jdk-12.0.2
 
 export PATH_TO_FX=/home/vash/Java/openjfx-12.0.2_linux-x64_bin-sdk/javafx-sdk-12.0.2/lib
@@ -120,3 +123,5 @@ cowsay -f tux "Love & Peace" | lolcat
 
 [[ -s ~/.autojump/etc/profile.d/autojump.sh ]] && . ~/.autojump/etc/profile.d/autojump.sh
 
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh

@@ -133,3 +133,5 @@ echo -e "Love & Peace"
 # "Hello Bash"
 alias hello='~/bin/hello_world.sh'
 
+
+[ -f ~/.fzf.bash ] && source ~/.fzf.bash

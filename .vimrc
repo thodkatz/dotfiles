@@ -13,6 +13,7 @@ Plugin 'VundleVim/Vundle.vim'
 Plugin 'vim-airline/vim-airline'
 
 Plugin 'scrooloose/nerdtree'
+map <C-n> :NERDTreeToggle<CR>
 
 Plugin 'junegunn/goyo.vim'
 
