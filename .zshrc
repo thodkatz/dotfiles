@@ -109,6 +109,8 @@ alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/templates/article.
 alias cat="bat"
 alias find="fd"
 alias wiki="vim ~/Dropbox/vimwiki"
+alias vimrc="vim ~/.vimrc"
+alias zshrc="vim ~/.zshrc"
 
 bindkey -s '^o' 'vim $(fzf --preview="bat {} --color=always")\n'
 
