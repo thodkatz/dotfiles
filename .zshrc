@@ -108,6 +108,7 @@ alias viber="/opt/viber/Viber"
 alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/templates/article.tex source.tex"
 alias cat="bat"
 alias find="fd"
+alias wiki="vim ~/Dropbox/vimwiki"
 
 bindkey -s '^o' 'vim $(fzf --preview="bat {} --color=always")\n'
 
