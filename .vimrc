@@ -19,17 +19,20 @@ Plugin 'junegunn/goyo.vim'
 
 Plugin 'vimwiki/vimwiki'
 
-Plugin 'lervag/vimtex'
+" Plugin 'lervag/vimtex'
 
 Plugin 'xuhdev/vim-latex-live-preview'
 let g:livepreview_previewer = 'zathura'
+" prevent recompilation automatically
+let g:livepreview_cursorhold_recompile = 0
 
 Plugin 'jamshedvesuna/vim-markdown-preview'
 let vim_markdown_preview_browser='surf'
 let vim_markdown_preview_hotkey='<C-m>'
 let vim_markdown_preview_github=1
 
-
+Plugin 'junegunn/fzf'
+Plugin 'junegunn/fzf.vim'
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -49,3 +52,12 @@ filetype plugin indent on    " required
 set relativenumber
 
 syntax on
+
+set mouse=a
+
+set spell
+
+" change the highlight of misspelled words
+hi clear SpellBad
+hi SpellBad cterm=underline
+hi SpellBad gui=undercurl

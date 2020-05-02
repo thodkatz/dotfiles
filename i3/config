@@ -191,7 +191,7 @@ mode "resize" {
 bindsym $mod+r mode "resize"
 
 set $lock_image ~/MEGA/Pictures/jin_roh_red_eyes.png
-set $desktop_image ~/MEGA/Pictures/wow.png
+set $desktop_image ~/MEGA/Pictures/awesome_intelligence_myth.jpg
 
 # i3 lock scree (only .png images)
 bindsym $mod+x exec i3lock -t -u -i $lock_image

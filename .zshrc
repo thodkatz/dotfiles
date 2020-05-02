@@ -105,10 +105,9 @@ source $ZSH/oh-my-zsh.sh
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias clion="~/opt/clion-2019.1.4/bin/clion.sh"
 alias viber="/opt/viber/Viber"
-alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/preamble/templates/article.tex source.tex"
+alias new="cp /home/vash/Dropbox/my_plain_wiki/research/latex/templates/article.tex source.tex"
 alias cat="bat"
 alias find="fd"
-
 
 bindkey -s '^o' 'vim $(fzf --preview="bat {} --color=always")\n'
 
