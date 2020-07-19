@@ -41,7 +41,9 @@ let g:instant_markdown_browser = "surf"
 Plugin 'junegunn/fzf'
 Plugin 'junegunn/fzf.vim'
 
-Plugin 'ap/vim-css-color'
+"Plugin 'ap/vim-css-color'
+
+Plugin 'lilydjwg/colorizer'
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -67,7 +69,7 @@ set tabstop=4
 syntax enable
 
 highlight Normal ctermbg=Black
-highlight Normal ctermfg=LightMagenta
+"highlight Normal ctermfg=LightMagenta
 
 set mouse=a
 
