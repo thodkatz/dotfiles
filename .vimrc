@@ -10,6 +10,7 @@ set nu
 " set nowrap
 set smartcase
 set incsearch
+set mouse=a
 
 call plug#begin('~/.vim/plugged')
 
