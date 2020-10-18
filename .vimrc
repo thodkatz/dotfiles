@@ -1,4 +1,4 @@
-" inspiration: https://www.youtube.com/watch?v=n9k9scbTuvQ. ThePrimeagen youtube channel
+"inspiration: https://www.youtube.com/watch?v=n9k9scbTuvQ. ThePrimeagen youtube channel
 
 syntax on
 
@@ -10,7 +10,6 @@ set nu
 " set nowrap
 set smartcase
 set incsearch
-set mouse=a
 
 call plug#begin('~/.vim/plugged')
 
@@ -18,6 +17,7 @@ Plug 'jremmen/vim-ripgrep'
 Plug 'morhetz/gruvbox'
 Plug 'Valloric/YouCompleteMe'
 Plug 'mbbill/undotree'
+Plug 'preservim/nerdtree'
 
 call plug#end()
 
@@ -31,6 +31,8 @@ nnoremap <leader>j :wincmd j<CR>
 nnoremap <leader>k :wincmd k<CR>
 nnoremap <leader>l :wincmd l<CR>
 nnoremap <leader>u :UndotreeShow<CR>
+nnoremap <C-n> :q<CR>
+nnoremap <leader>n :NERDTreeToggle<CR>
 
 let g:rg_highlight='true'
 "let g:rg_command = 'rg --vimgrep -S'
