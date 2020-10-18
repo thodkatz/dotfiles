@@ -6,8 +6,8 @@
 
 ;; Some functionality uses this to identify you, e.g. GPG configuration, email
 ;; clients, file templates and snippets.
-(setq user-full-name "John Doe"
-      user-mail-address "john@doe.com")
+(setq user-full-name "Theodoros Katzalis"
+      user-mail-address "thodkatz@gmail.com")
 
 ;; Doom exposes five (optional) variables for controlling fonts in Doom. Here
 ;; are the three important ones:
@@ -30,11 +30,19 @@
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
 (setq org-directory "~/org/")
+(after! org
+;; Make bullets in org mode fancier
+(require 'org-bullets)
+(add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
+(add-hook 'org-mode-hook 'turn-on-flyspell) ;; start flyspell each time org is loaded, [[https://tecosaur.github.io/emacs-config/config.html][source]]
+;;(setq ispell-dictionary "el_GR")
+)
 
 ;; This determines the style of line numbers in effect. If set to `nil', line
 ;; numbers are disabled. For relative line numbers, set this to `relative'.
 (setq display-line-numbers-type t)
 
+;;(setq select-enable-clipboard t) ;; make system copy-paste work with emac copy-paste
 
 ;; Here are some additional functions/macros that could help you configure Doom:
 ;;
@@ -64,7 +72,7 @@
             :desc "org-roam-show-graph" "g" #'org-roam-show-graph
             :desc "org-roam-capture" "c" #'org-roam-capture))
 
-(require 'company-org-roam)
+;;(require 'company-org-roam)
 (use-package company-org-roam
   :when (featurep! :completion company)
   :after org-roam
