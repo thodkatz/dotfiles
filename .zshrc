@@ -120,3 +120,5 @@ alias vimcfg="vim ~/.vimrc"
 alias alacrittycfg="vim ~/.config/alacritty/alacritty.yml"
 
 # alias ohmyzsh="mate ~/.oh-my-zsh"
+
+eval "$(jump shell)"

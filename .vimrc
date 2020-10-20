@@ -33,7 +33,10 @@ nnoremap <leader>l :wincmd l<CR>
 nnoremap <leader>u :UndotreeShow<CR>
 nnoremap <C-n> :q<CR>
 nnoremap <leader>n :NERDTreeToggle<CR>
+" a common shortcut to escape from insert mode
+inoremap jk <Esc>
 
 let g:rg_highlight='true'
 "let g:rg_command = 'rg --vimgrep -S'
 let g:rg_derive_root='true'
+let NERDTreeShowHidden=1
