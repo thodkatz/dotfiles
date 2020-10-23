@@ -18,7 +18,8 @@ Plug 'morhetz/gruvbox'
 Plug 'Valloric/YouCompleteMe'
 Plug 'mbbill/undotree'
 Plug 'preservim/nerdtree'
-
+Plug 'vim-scripts/ctrlp.vim'
+Plug 'ap/vim-css-color'
 call plug#end()
 
 colorscheme gruvbox
@@ -40,3 +41,6 @@ let g:rg_highlight='true'
 "let g:rg_command = 'rg --vimgrep -S'
 let g:rg_derive_root='true'
 let NERDTreeShowHidden=1
+
+let g:ctrl_map='<c-p>'
+let g:ctrlp_show_hidden=1
