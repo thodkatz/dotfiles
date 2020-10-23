@@ -115,10 +115,12 @@ source $ZSH/oh-my-zsh.sh
 # For a full list of active aliases, run `alias`.
 #
 # Example aliases
-alias zshcfg="vim ~/.zshrc"
-alias vimcfg="vim ~/.vimrc"
-alias alacrittycfg="vim ~/.config/alacritty/alacritty.yml"
-
+alias zshcfg='vim ~/.zshrc'
+alias vimcfg='vim ~/.vimrc'
+alias alacrittycfg='vim ~/.config/alacritty/alacritty.yml'
+alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
+# fv stand for fzf vim
+alias fv='vim $(fzf)' 
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 eval "$(jump shell)"
