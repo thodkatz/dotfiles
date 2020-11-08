@@ -115,8 +115,10 @@ source $ZSH/oh-my-zsh.sh
 # For a full list of active aliases, run `alias`.
 #
 # Example aliases
+alias vim=nvim
 alias zshcfg='vim ~/.zshrc'
 alias vimcfg='vim ~/.vimrc'
+alias nvimcfg='nvim ~/.config/nvim/init.vim'
 alias alacrittycfg='vim ~/.config/alacritty/alacritty.yml'
 alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 # fv stand for fzf vim
