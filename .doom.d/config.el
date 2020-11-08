@@ -35,7 +35,7 @@
 (require 'org-bullets)
 (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
 (add-hook 'org-mode-hook 'turn-on-flyspell) ;; start flyspell each time org is loaded, [[https://tecosaur.github.io/emacs-config/config.html][source]]
-;;(setq ispell-dictionary "el_GR")
+(setq ispell-dictionary "en_US,el_GR")
 )
 
 ;; This determines the style of line numbers in effect. If set to `nil', line

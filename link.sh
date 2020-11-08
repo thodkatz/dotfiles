@@ -13,4 +13,5 @@ ln -sfv $var/alacritty ~/.config/
 ln -sfv $var/.doom.d ~/
 ln -sfv $var/picom.conf ~/.config/
 ln -sfv $var/.xinitrc ~/
+ln -sfv $var/init.nvim ~/.config/nvim
 
