@@ -35,12 +35,26 @@
 (require 'org-bullets)
 (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
 (add-hook 'org-mode-hook 'turn-on-flyspell) ;; start flyspell each time org is loaded, [[https://tecosaur.github.io/emacs-config/config.html][source]]
-(setq ispell-dictionary "en_US,el_GR")
 )
+
+;; npt working
+(with-eval-after-load "ispell"
+;;  (setq ispell-program-name "hunspell")
+;;  (setq ispell-dictionary "en_US,el_GR")
+  ;; ispell-set-spellchecker-params has to be called
+  ;; before ispell-hunspell-add-multi-dic will work
+
+(setq ispell-program-name "hunspell")
+;; you could set `ispell-dictionary` instead but `ispell-local-dictionary' has higher priority
+(setq ispell-local-dictionary "en_US, el_GR")
+(ispell-set-spellchecker-params)
+(ispell-hunspell-add-multi-dic "en_US,el_GR")
+(setq ispell-local-dictionary-alist '(("en_US" "[[:alpha:]]" "[^[:alpha:]]" "[']" nil ("-d" "en_US,el_GR") nil utf-8)))
 
 ;; This determines the style of line numbers in effect. If set to `nil', line
 ;; numbers are disabled. For relative line numbers, set this to `relative'.
 (setq display-line-numbers-type t)
+)
 
 ;;(setq select-enable-clipboard t) ;; make system copy-paste work with emac copy-paste
 

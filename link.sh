@@ -13,6 +13,7 @@ ln -sfv $var/alacritty ~/.config/
 ln -sfv $var/.doom.d ~/
 ln -sfv $var/picom.conf ~/.config/
 ln -sfv $var/.xinitrc ~/
-ln -sfv $var/init.vim ~/.config/nvim
-ln -sfv $var/coc-settings.json ~/.config/nvim
-
+ln -sfv $var/nvim/* ~/.config/nvim/
+ln -sfv $var/nvim/general/* ~/.config/nvim/general/
+ln -sfv $var/nvim/vim-plug/* ~/.config/nvim/vim-plug/
+ln -sfv $var/nvim/plug-conf/* ~/.config/nvim/plug-conf/
