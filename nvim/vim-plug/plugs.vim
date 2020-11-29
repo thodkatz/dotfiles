@@ -12,6 +12,9 @@ Plug 'tpope/vim-commentary'
 "Plug 'puremourning/vimspector'
 Plug 'justinmk/vim-sneak'
 
+" LaTeX
+Plug 'lervag/vimtex'
+
 " general
 "Plug 'vim-scripts/ctrlp.vim'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }

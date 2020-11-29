@@ -125,4 +125,7 @@ alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 alias fv='vim $(fzf)' 
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
+export PATH="$HOME/.local/bin:$PATH"
+
+
 eval "$(jump shell)"

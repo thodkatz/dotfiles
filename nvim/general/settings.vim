@@ -10,3 +10,4 @@ set smartcase
 set incsearch
 "set completeopt-=preview "disable preview window when using ycm
 set mouse=a
+set spelllang=en,el_GR

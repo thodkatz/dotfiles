@@ -8,14 +8,14 @@
 
 # dwm
 
-feh --bg-fill ~/MEGA/media/pictures/wallpapers/spacekid.png
+feh --bg-fill ~/MEGA/media/pictures/zoro_sanji.png
 # picom is a wrapper of compton for Arch Linux
 picom --config ~/.config/picom.conf & 
 
 while true; do
 		xsetroot -name "$(date)"
 		sleep 1m
-		
+  	
 done &
 
 exec dwm
