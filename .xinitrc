@@ -8,14 +8,19 @@
 
 # dwm
 
-feh --bg-fill ~/MEGA/media/pictures/zoro_sanji.png
-# picom is a wrapper of compton for Arch Linux
-picom --config ~/.config/picom.conf & 
+# feh --bg-fill ~/MEGA/media/pictures/space_lost.jpg
+# # picom is a wrapper of compton for Arch Linux
+# picom --config ~/.config/picom.conf & 
 
-while true; do
-		xsetroot -name "$(date)"
-		sleep 1m
+# while true; do
+# 		xsetroot -name "$(date)"
+# 		sleep 5s
   	
-done &
+# done &
 
-exec dwm
+# if dunst systemctl failes. Then it is probably due to the lack of a display manager
+# confirmed!
+systemctl --user import-environment DISPLAY
+
+exec dbus-launch dwm
+

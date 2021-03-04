@@ -15,5 +15,6 @@ ln -sfv $var/picom.conf ~/.config/
 ln -sfv $var/.xinitrc ~/
 ln -sfv $var/nvim/* ~/.config/nvim/
 ln -sfv $var/nvim/general/* ~/.config/nvim/general/
+ln -sfv $var/nvim/keys/* ~/.config/nvim/keys/
 ln -sfv $var/nvim/vim-plug/* ~/.config/nvim/vim-plug/
 ln -sfv $var/nvim/plug-conf/* ~/.config/nvim/plug-conf/

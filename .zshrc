@@ -123,6 +123,7 @@ alias alacrittycfg='vim ~/.config/alacritty/alacritty.yml'
 alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 # fv stand for fzf vim
 alias fv='vim $(fzf)' 
+alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 export PATH="$HOME/.local/bin:$PATH"
