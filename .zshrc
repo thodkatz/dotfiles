@@ -126,7 +126,7 @@ alias fv='vim $(fzf)'
 alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$PATH:$HOME/.local/bin"
 
 
 eval "$(jump shell)"

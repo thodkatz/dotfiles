@@ -4,18 +4,36 @@
 syntax on
 
 set noerrorbells
-set tabstop=4 softtabstop=4 shiftwidth=4  expandtab
+" set tabstop=4 softtabstop=4 shiftwidth=4  expandtab
 " set expandtab
-set smartindent
+" set smartindent
 set nu
 " set nowrap
 set smartcase
-set incsearch
 set completeopt-=preview "disable preview window when using ycm
 set mouse=a
 if !has('nvim')
     set ttymouse=sgr " specific for usage with alacritty
 endif
+
+set nocompatible    " allow for non-vi compatible features
+syntax on           " enable syntax highlighting
+filetype indent on  " turn on filetype detection and indenting
+set autoindent      " turn on auto indenting
+
+" If you prefer spaces to tabs, uncomment the following:
+"  (To get a real tab with these settings, do CTRL-V TAB)
+ set expandtab       " replace indents with spaces
+set shiftwidth=2    " set how many spaces per indent
+set smarttab        " use spaces as indents at the beginning of lines
+
+" Other useful commands, uncomment as desired:
+set background=dark " switch to color scheme for terminals with a dark background
+set ignorecase      " ignore case when searching (turn off by ": set noignorecase")
+set incsearch       " enable incremental search
+set ruler           " show cursor line at the bottom of the terminal
+set showmatch       " show bracket matches
+set showmode        " display current mode in the status line
 
 call plug#begin('~/.vim/plugged')
 
@@ -30,6 +48,7 @@ Plug 'vim-airline/vim-airline'
 Plug 'tpope/vim-surround'
 Plug 'jiangmiao/auto-pairs'
 Plug 'tmhedberg/matchit'
+Plug '~/path/to/chapel/highlight/vim'
 
 call plug#end()
 

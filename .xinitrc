@@ -21,6 +21,4 @@
 # if dunst systemctl failes. Then it is probably due to the lack of a display manager
 # confirmed!
 systemctl --user import-environment DISPLAY
-
 exec dbus-launch dwm
-
