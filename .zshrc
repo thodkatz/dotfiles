@@ -1,5 +1,4 @@
-# If you come from bash you might have to change your $PATH.
-# export PATH=$HOME/bin:/usr/local/bin:$PATH
+# If you come from bash you might have to change your $PATH.  export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
 export ZSH="/home/tkatz/.oh-my-zsh"
@@ -9,7 +8,7 @@ export PATH=$PATH:~/.emacs.d/bin
 # load a random theme each time oh-my-zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="agnoster"
+ZSH_THEME="spaceship"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -124,9 +123,14 @@ alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 # fv stand for fzf vim
 alias fv='vim $(fzf)' 
 alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
+alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
+alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin"
+export PATH="$PATH:$HOME/.local/bin:$HOME/Polyspace/R2021a/bin/"
 
+# fix grey UI matlab
+# source: https://wiki.archlinux.org/title/MATLAB
+export _JAVA_AWT_WM_NONREPARENTING=1
 
 eval "$(jump shell)"
