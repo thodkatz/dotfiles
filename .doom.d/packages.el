@@ -50,8 +50,13 @@
 ;(unpin! pinned-package another-pinned-package)
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;(unpin! t)
+(package! org-roam
+ :recipe (:host github :repo "org-roam/org-roam"))
 
 (package! evil-tutor)
 (package! org-bullets)
 (package! org-super-agenda)
 (package! chapel-mode)
+(package! matlab-mode)
+(package! ranger)
+(package! org-download)

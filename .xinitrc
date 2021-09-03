@@ -7,15 +7,12 @@
 #exec startplasma-x11
 
 # dwm
-
 # feh --bg-fill ~/MEGA/media/pictures/space_lost.jpg
 # # picom is a wrapper of compton for Arch Linux
 # picom --config ~/.config/picom.conf & 
-
 # while true; do
 # 		xsetroot -name "$(date)"
 # 		sleep 5s
-  	
 # done &
 
 # if dunst systemctl failes. Then it is probably due to the lack of a display manager
