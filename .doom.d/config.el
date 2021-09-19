@@ -198,7 +198,7 @@
   (org-download-image-dir "~/org/slipbox/slipbox_new/images")
   ;;(org-download-heading-lvl nil)
   ;;(org-download-timestamp "%Y%m%d-%H%M%S_")
-  (org-image-actual-width 800)
+  (org-image-actual-width 600)
   (org-download-screenshot-method "/usr/bin/scrot -s %s")
   :bind
   ("C-M-y" . org-download-screenshot)
