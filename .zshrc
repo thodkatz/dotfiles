@@ -127,7 +127,7 @@ alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin:$HOME/Polyspace/R2021a/bin/"
+export PATH="$PATH:$HOME/.local/bin:/opt/Polyspace/R2021a/bin/"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
