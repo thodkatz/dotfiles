@@ -12,12 +12,14 @@
 
 (require 'package)
 (setq package-archives '(("melpa" . "https://melpa.org/packages/")
-			 ("org" . "https://orgmode.org/elpa/")
-			 ("elpa" . "https://elpa.gnu.org/packages/")))
+                         ("melpa-stable" . "https://stable.melpa.org/packages/")
+                         ("org" . "https://orgmode.org/elpa/")
+                         ("elpa" . "https://elpa.gnu.org/packages/")))
 
+(package-refresh-contents) ; Failed to install evil: https://melpa.org/packages/goto-chg-20210508.1632.el: Not found
 (package-initialize)
-(unless package-archive-contents
-  (package-refresh-contents))
+;;(unless package-archive-contents
+;;  (package-refresh-contents))
 
 (column-number-mode)
 (global-display-line-numbers-mode t)
@@ -73,7 +75,7 @@
   :ensure t
   :init (doom-modeline-mode 1))
 
-(use-package doom-themes)
+;;(use-package doom-themes)
 
 (use-package rainbow-delimiters
   :hook (prog-mode . rainbow-delimiters-mode))
@@ -102,3 +104,27 @@
   ([remap describe-variable] . helpful-variable)
   ([remap describe-command] . helpful-command)
   ([remap describe-key] . helpful-key))
+
+
+(use-package undo-tree
+  :init
+  (global-undo-tree-mode 1)) ; override emacs' undo with undo-tree package all buffers
+
+(use-package evil
+  :init      ;; tweak evil's configuration before loading it
+  (setq evil-want-integration t) ;; This is optional since it's already set to t by default.
+  (setq evil-want-keybinding nil)
+  (setq evil-vsplit-window-right t)
+  (setq evil-split-window-below t)
+  (setq evil-respect-visual-line-mode t)
+  (setq evil-undo-function 'undo-tree-undo)
+  (setq evil-redo-function 'undo-tree-redo)
+  (evil-mode))
+
+;;(use-package evil-collection
+;;  :after evil
+;;  :config
+;;  (setq evil-collection-mode-list '(dashboard dired ibuffer))
+;;  (evil-collection-init))
+;;(use-package evil-tutor)
+
