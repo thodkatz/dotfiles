@@ -7,12 +7,16 @@ mkdir -p ~/.config/nvim/general
 mkdir -p ~/.config/nvim/keys
 mkdir -p ~/.config/nvim/vim-plug
 mkdir -p ~/.config/nvim/plug-conf
+mkdir -p ~/.config/i3
+mkdir -p ~/.config/rofi
 
 # f flag to override/update in case it already exists
 # s for the soft link
 # v for the verbose, to print the link name
 ln -snfv $var/.zshrc ~/
 ln -snfv $var/.vimrc ~/
+ln -snfv $var/i3/config ~/.config/i3/
+ln -snfv $var/rofi/config.rasi ~/.config/rofi/
 ln -snfv $var/alacritty ~/.config/
 ln -snfv $var/.doom.d ~/
 ln -snfv $var/picom.conf ~/.config/

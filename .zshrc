@@ -127,10 +127,18 @@ alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin:/opt/Polyspace/R2021a/bin/"
+export PATH="$PATH:$HOME/.local/bin:/opt/Polyspace/R2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:opt/acc-py/:/opt/acc-eclipse/"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
 export _JAVA_AWT_WM_NONREPARENTING=1
 
 eval "$(jump shell)"
+
+cern ()
+{ 
+    local tempfile=$(mktemp);
+    echo "sshuttle exclusion file: ${tempfile}";
+    host lxplus.cern.ch | grep -v ':' | awk '{print $NF}' >> ${tempfile};
+    sshuttle --dns --remote=lxplus.cern.ch 10.0.0.0/8 10.100.0.0/16 10.254.0.0/16 10.76.0.0/15 100.64.0.0/10 128.141.0.0/16 128.142.0.0/16 137.138.0.0/16 172.16.0.0/12 185.249.56.0/22 188.184.0.0/15 192.65.196.0/23 192.91.242.0/24 194.12.128.0/18 -X ${tempfile}
+}

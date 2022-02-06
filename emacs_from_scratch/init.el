@@ -6,7 +6,7 @@
 (menu-bar-mode -1)
 (setq visible-bell nil)
 
-;;(load-theme 'doom-palenight)
+;;(load-theme 'doom-palenight) ; does it need the doom-themes package?
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 
@@ -37,6 +37,7 @@
 (require 'use-package)
 (setq use-package-always-ensure t) ; install package if not found in use-package environment
 
+;; completion framework
 (use-package ivy
   :diminish
   :demand
@@ -71,15 +72,16 @@
   :diminish which-key-mode
   :config (setq which-key-idle-delay 0.3))
 
+;; status bar thing
 (use-package doom-modeline
   :ensure t
   :init (doom-modeline-mode 1))
 
-;;(use-package doom-themes)
-
+;; elisp life saver: parenthesis mismatch
 (use-package rainbow-delimiters
   :hook (prog-mode . rainbow-delimiters-mode))
 
+;; also known as prot
 (use-package modus-themes
   :init
   ;; Add all your customizations prior to loading the themes
@@ -94,6 +96,7 @@
   (modus-themes-load-vivendi)
   :bind ("<f5>" . modus-themes-toggle))
 
+;; make help pages aesthetically pleasing
 (use-package helpful
   :custom
   (counsel-describe-function-function #'helpful-callable)
@@ -106,10 +109,12 @@
   ([remap describe-key] . helpful-key))
 
 
+;; Used to map evil undo redo with undo-tree package
 (use-package undo-tree
   :init
-  (global-undo-tree-mode 1)) ; override emacs' undo with undo-tree package all buffers
+  (global-undo-tree-mode 1)) ; override emacs' undo with undo-tree package for all buffers
 
+;; integrate vim bindings to emacs
 (use-package evil
   :init      ;; tweak evil's configuration before loading it
   (setq evil-want-integration t) ;; This is optional since it's already set to t by default.
@@ -127,4 +132,3 @@
 ;;  (setq evil-collection-mode-list '(dashboard dired ibuffer))
 ;;  (evil-collection-init))
 ;;(use-package evil-tutor)
-
