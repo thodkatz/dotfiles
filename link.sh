@@ -7,6 +7,9 @@ mkdir -p ~/.config/nvim/general
 mkdir -p ~/.config/nvim/keys
 mkdir -p ~/.config/nvim/vim-plug
 mkdir -p ~/.config/nvim/plug-conf
+mkdir -p ~/.config/bspwm
+mkdir -p ~/.config/sxhkd
+mkdir -p ~/.config/polybar
 mkdir -p ~/.config/i3
 mkdir -p ~/.config/rofi
 
@@ -17,6 +20,9 @@ ln -snfv $var/.zshrc ~/
 ln -snfv $var/.vimrc ~/
 ln -snfv $var/i3/config ~/.config/i3/
 ln -snfv $var/rofi/config.rasi ~/.config/rofi/
+ln -snfv $var/bspwm/bspwmrc ~/.config/bspwm
+ln -snfv $var/sxhkd/sxhkdrc ~/.config/sxhkd
+ln -snfv $var/polybar/config ~/.config/polybar
 ln -snfv $var/alacritty ~/.config/
 ln -snfv $var/.doom.d ~/
 ln -snfv $var/picom.conf ~/.config/
