@@ -3,6 +3,7 @@
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
 export PATH=$PATH:~/.emacs.d/bin
+export EDITOR=nvim
 
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time oh-my-zsh is loaded, in which case,
@@ -124,6 +125,7 @@ alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 alias fv='vim $(fzf)' 
 alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 alias myeyes='redshift -l 40.38:22.55 &'
+alias lock='~/repos/dotfiles/i3lock.sh'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
