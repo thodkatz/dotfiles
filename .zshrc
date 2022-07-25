@@ -125,11 +125,10 @@ alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
 alias fv='vim $(fzf)' 
 alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 alias myeyes='redshift -l 40.38:22.55 &'
-alias lock='~/repos/dotfiles/i3lock.sh'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin:/opt/Polyspace/R2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:opt/acc-py/:/opt/acc-eclipse/"
+export PATH="$PATH:$HOME/.local/bin:/opt/Polyspace/R2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:opt/acc-py/:/opt/acc-eclipse/:$HOME/repos/dotfiles"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
