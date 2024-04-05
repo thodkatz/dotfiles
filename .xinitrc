@@ -3,9 +3,9 @@
 # Notes: Iinstead of comment uncomment the kde and the dwm, you can use a login manager like lightDM
 
 # kde-plasma
-#export DESKTOP_SESSION=plasma
-#export KDEWM=/usr/bin/i3
-#exec startplasma-x11
+export DESKTOP_SESSION=plasma
+export KDEWM=/usr/bin/i3
+exec startplasma-x11
 
 # dwm
 # feh --bg-fill ~/MEGA/media/pictures/space_lost.jpg
@@ -18,5 +18,5 @@
 
 # if dunst systemctl failes. Then it is probably due to the lack of a display manager
 # confirmed!
-systemctl --user import-environment DISPLAY
-exec dbus-launch dwm
+#systemctl --user import-environment DISPLAY
+#exec dbus-launch dwm

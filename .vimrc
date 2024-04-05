@@ -23,7 +23,8 @@ set autoindent      " turn on auto indenting
 
 " If you prefer spaces to tabs, uncomment the following:
 "  (To get a real tab with these settings, do CTRL-V TAB)
- set expandtab       " replace indents with spaces
+set expandtab       " replace indents with spaces
+set tabstop=4
 set shiftwidth=2    " set how many spaces per indent
 set smarttab        " use spaces as indents at the beginning of lines
 
@@ -35,11 +36,16 @@ set ruler           " show cursor line at the bottom of the terminal
 set showmatch       " show bracket matches
 set showmode        " display current mode in the status line
 
+let data_dir = has('nvim') ? stdpath('data') . '/site' : '~/.vim'
+if empty(glob(data_dir . '/autoload/plug.vim'))
+  silent execute '!curl -fLo '.data_dir.'/autoload/plug.vim --create-dirs  https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+  autocmd VimEnter * PlugInstall --sync | source $MYVIMRC
+endif
+
 call plug#begin('~/.vim/plugged')
 
 Plug 'jremmen/vim-ripgrep'
 Plug 'morhetz/gruvbox'
-Plug 'Valloric/YouCompleteMe'
 Plug 'mbbill/undotree'
 Plug 'preservim/nerdtree'
 Plug 'vim-scripts/ctrlp.vim'

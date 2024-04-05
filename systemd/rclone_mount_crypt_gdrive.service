@@ -1,0 +1,10 @@
+[Unit]
+Description=Mount with rclone the encrypted google drive directory
+Before=shutdown.target
+
+[Service]
+ExecStart=rclone --allow-other --config=/home/thodkatz/.config/rclone/rclone.conf mount crypt:/thodkatz-hp /home/thodkatz/gdrive
+ExecStop=fusermount -u ~/gdrive
+
+[Install]
+WantedBy=multi-user.target

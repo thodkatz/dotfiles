@@ -19,4 +19,3 @@ source ~/.config/nvim/plug-conf/gruvbox.vim
 source ~/.config/nvim/plug-conf/nerdtree.vim
 source ~/.config/nvim/plug-conf/undotree.vim
 source ~/.config/nvim/plug-conf/fzf.vim
-source ~/.config/nvim/plug-conf/vimtex.vim
