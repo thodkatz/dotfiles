@@ -1,0 +1,21 @@
+{
+    "workbench.colorTheme": "GitHub Light",
+    "codesnap.showWindowControls": false,
+    "codesnap.showLineNumbers": false,
+    "codesnap.transparentBackground": true,
+    "codesnap.boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px",
+    "codesnap.backgroundColor": "#0000",
+    "codesnap.containerPadding": "0em",
+    "[python]": {
+        "editor.formatOnType": true
+    },
+    "editor.minimap.enabled": false,
+    "[octave]": {
+        "editor.defaultFormatter": "tusindfryd.octave-formatter"
+    },
+    "jupyter.interactiveWindow.creationMode": "perFile",
+    "workbench.sideBar.location": "right",
+    "workbench.editor.editorActionsLocation": "titleBar",
+    "workbench.activityBar.location": "top",
+    "window.customTitleBarVisibility": "auto"
+}
