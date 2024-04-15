@@ -152,5 +152,9 @@ else
     fi
 fi
 unset __conda_setup
+
+if [ -f "/opt/miniforge-pypy3/etc/profile.d/mamba.sh" ]; then
+    . "/opt/miniforge-pypy3/etc/profile.d/mamba.sh"
+fi
 # <<< conda initialize <<<
 

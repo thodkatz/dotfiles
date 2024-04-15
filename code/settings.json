@@ -17,5 +17,6 @@
     "workbench.sideBar.location": "right",
     "workbench.editor.editorActionsLocation": "titleBar",
     "workbench.activityBar.location": "top",
-    "window.customTitleBarVisibility": "auto"
+    "workbench.iconTheme": "material-icon-theme",
+    "window.menuBarVisibility": "toggle"
 }
