@@ -1,5 +1,5 @@
 {
-    "workbench.colorTheme": "GitHub Light",
+    "workbench.colorTheme": "Gruvbox Dark Hard",
     "codesnap.showWindowControls": false,
     "codesnap.showLineNumbers": false,
     "codesnap.transparentBackground": true,
@@ -7,7 +7,8 @@
     "codesnap.backgroundColor": "#0000",
     "codesnap.containerPadding": "0em",
     "[python]": {
-        "editor.formatOnType": true
+        "editor.formatOnType": true,
+        "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "editor.minimap.enabled": false,
     "[octave]": {
@@ -16,7 +17,19 @@
     "jupyter.interactiveWindow.creationMode": "perFile",
     "workbench.sideBar.location": "right",
     "workbench.editor.editorActionsLocation": "titleBar",
-    "workbench.activityBar.location": "top",
     "workbench.iconTheme": "material-icon-theme",
-    "window.menuBarVisibility": "toggle"
+    "window.menuBarVisibility": "toggle",
+    "workbench.editor.tabSizing": "shrink",
+    "workbench.editor.tabSizingFixedMinWidth": 38,
+    "workbench.editor.scrollToSwitchTabs": true,
+    "workbench.editor.pinnedTabSizing": "compact",
+    "workbench.editor.highlightModifiedTabs": true,
+    "terminal.integrated.inheritEnv": false,
+    "pylint.lintOnChange": true,
+    "pylint.showNotifications": "always",
+    "files.autoSave": "afterDelay",
+    "workbench.activityBar.location": "top",
+    "ltex.additionalRules.languageModel": "/opt/languagetool/lid.176.bin",
+    "ltex.additionalRules.enablePickyRules": true,
+    "ltex.languageToolHttpServerUri": "http://localhost:8081/v2/"
 }
