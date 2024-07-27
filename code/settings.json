@@ -7,14 +7,18 @@
     "codesnap.backgroundColor": "#0000",
     "codesnap.containerPadding": "0em",
     "[python]": {
+        "breadcrumbs.showConstructors": true,
         "editor.formatOnType": true,
-        "editor.defaultFormatter": "charliermarsh.ruff"
+        "editor.defaultFormatter": "ms-python.black-formatter"
     },
     "editor.minimap.enabled": false,
     "[octave]": {
         "editor.defaultFormatter": "tusindfryd.octave-formatter"
     },
     "jupyter.interactiveWindow.creationMode": "perFile",
+    "jupyter.runStartupCommands": [
+        "%load_ext autoreload", "%autoreload 2"
+    ],
     "workbench.sideBar.location": "right",
     "workbench.editor.editorActionsLocation": "titleBar",
     "workbench.iconTheme": "material-icon-theme",
@@ -31,5 +35,13 @@
     "workbench.activityBar.location": "top",
     "ltex.additionalRules.languageModel": "/opt/languagetool/lid.176.bin",
     "ltex.additionalRules.enablePickyRules": true,
-    "ltex.languageToolHttpServerUri": "http://localhost:8081/v2/"
+    "ltex.languageToolHttpServerUri": "http://localhost:8081/v2/",
+    "interactiveWindow.executeWithShiftEnter": true,
+    "remote.SSH.configFile": "~/.ssh/config",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.inlayHints.callArgumentNames": "all",
+    "python.analysis.inlayHints.functionReturnTypes": true,
+    "python.analysis.inlayHints.pytestParameters": true,
+    "python.analysis.inlayHints.variableTypes": true,
+    "python.analysis.typeCheckingMode": "basic"
 }
