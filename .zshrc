@@ -119,6 +119,8 @@ source $ZSH/oh-my-zsh.sh
 #
 # Example aliases
 # alias vim=nvim
+alias emblinit='ssh -vv katzalis@sshint.embl.de'
+alias embl='ssh -vv katzalis@kreshuk-gpu1.embl.de'
 alias mediahoarder='~/repos/personal/my-scripts/archive_media.sh'
 alias zshcfg='vim ~/.zshrc'
 alias vimcfg='vim ~/.vimrc'
@@ -133,9 +135,6 @@ alias myeyes='redshift -l 40.38:22.55 &'
 alias runm='~/repos/my-scripts/runm'
 
 export PATH="$PATH:$HOME/.local/bin:/opt/miniforge-pypy3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:opt/acc-py/:/opt/acc-eclipse/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
-
-ILASTIK=~/repos/ilastik
-export PYTHONPATH=$PYTHONPATH:$ILASTIK/ilastik:$ILASTIK/volumina
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
@@ -161,4 +160,3 @@ if [ -f "/opt/miniforge-pypy3/etc/profile.d/mamba.sh" ]; then
     . "/opt/miniforge-pypy3/etc/profile.d/mamba.sh"
 fi
 # <<< conda initialize <<<
-

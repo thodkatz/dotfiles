@@ -35,7 +35,7 @@
     "workbench.activityBar.location": "top",
     "ltex.additionalRules.languageModel": "/opt/languagetool/lid.176.bin",
     "ltex.additionalRules.enablePickyRules": true,
-    "ltex.languageToolHttpServerUri": "http://localhost:8081/v2/",
+    "ltex.languageToolHttpServerUri": "http://localhost:8081",
     "interactiveWindow.executeWithShiftEnter": true,
     "remote.SSH.configFile": "~/.ssh/config",
     "python.analysis.diagnosticMode": "workspace",
@@ -43,5 +43,15 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.pytestParameters": true,
     "python.analysis.inlayHints.variableTypes": true,
-    "python.analysis.typeCheckingMode": "basic"
+    "python.analysis.typeCheckingMode": "strict",
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.env.linux": {
+    "CUDA_VISIBLE_DEVICES": "5"
+},
+"ruff.showNotifications": "always",
+"ruff.lint.preview": true,
+"ruff.trace.server": "messages",
+"python.analysis.autoImportCompletions": true,
+"python.analysis.completeFunctionParens": true,
+"latex-workshop.latex.build.forceRecipeUsage": false
 }
