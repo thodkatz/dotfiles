@@ -53,5 +53,79 @@
 "ruff.trace.server": "messages",
 "python.analysis.autoImportCompletions": true,
 "python.analysis.completeFunctionParens": true,
-"latex-workshop.latex.build.forceRecipeUsage": false
+"latex-workshop.latex.autoBuild.run": "never",
+"latex-workshop.latex.build.forceRecipeUsage": false,
+"latex-workshop.latex.recipe.default": "xelatex",
+"latex-workshop.latex.recipes": [
+  {
+    "name": "xelatex",
+    "tools": [
+      "xelatex"
+    ]
+  },
+  {
+    "name": "pdflatexbib",
+    "tools": [
+      "pdflatex",
+      "bibtex",
+      "pdflatex",
+      "pdflatex"
+    ]
+  },
+  {
+    "name": "xelatexbib",
+    "tools": [
+      "xelatex",
+      "bibtex",
+      "xelatex",
+      "xelatex"
+    ]
+  }
+],
+"latex-workshop.latex.tools": [
+        {
+            "name": "latexmk",
+            "command": "latexmk",
+            "args": [
+                "-synctex=1",
+                "--shell-escape",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "-pdf",
+                "%DOC%"
+            ]
+        },
+        {
+            "name": "xelatex",
+            "command": "xelatex",
+            "args": [
+                "-synctex=1",
+                "--shell-escape", 
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "%DOC%"
+            ]
+        },
+        {
+            "name": "pdflatex",
+            "command": "pdflatex",
+            "args": [
+                "-synctex=1",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "%DOC%"
+            ]
+        },
+        {
+            "name": "bibtex",
+            "command": "bibtex",
+            "args": [
+                "%DOCFILE%"
+            ]
+        }
+    ],
+"debug.showVariableTypes": true,
+"jupyter.showVariableViewWhenDebugging": true,
+"debugpy.showPythonInlineValues": true,
+"debug.inlineValues": "on"
 }
