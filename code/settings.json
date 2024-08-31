@@ -43,7 +43,7 @@
     "python.analysis.inlayHints.functionReturnTypes": true,
     "python.analysis.inlayHints.pytestParameters": true,
     "python.analysis.inlayHints.variableTypes": true,
-    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.typeCheckingMode": "standard",
     "terminal.integrated.defaultProfile.linux": "bash",
     "terminal.integrated.env.linux": {
     "CUDA_VISIBLE_DEVICES": "5"
@@ -127,5 +127,8 @@
 "debug.showVariableTypes": true,
 "jupyter.showVariableViewWhenDebugging": true,
 "debugpy.showPythonInlineValues": true,
-"debug.inlineValues": "on"
+"debug.inlineValues": "on",
+"makefile.configureOnOpen": true,
+"jupyter.debugJustMyCode": false,
+"debugpy.debugJustMyCode": false
 }
