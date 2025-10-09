@@ -1,5 +1,5 @@
 {
-    "workbench.colorTheme": "Gruvbox Dark Hard",
+    "workbench.colorTheme": "Gruvbox Light Soft",
     "codesnap.showWindowControls": false,
     "codesnap.showLineNumbers": false,
     "codesnap.transparentBackground": true,
@@ -44,6 +44,7 @@
     "python.analysis.inlayHints.pytestParameters": true,
     "python.analysis.inlayHints.variableTypes": true,
     "python.analysis.typeCheckingMode": "standard",
+    "python.envFile": "${workspaceFolder}/.env",
     "terminal.integrated.defaultProfile.linux": "bash",
     "terminal.integrated.env.linux": {
     "CUDA_VISIBLE_DEVICES": "5"
@@ -64,12 +65,27 @@
     ]
   },
   {
+    "name": "latexmk",
+    "tools": [
+      "latexmk"
+    ]
+  },
+  {
     "name": "pdflatexbib",
     "tools": [
       "pdflatex",
       "bibtex",
       "pdflatex",
       "pdflatex"
+    ]
+  },
+  {
+    "name": "xelatexglss",
+    "tools": [
+      "xelatex",
+      "makeglossaries",
+      "xelatex",
+      "xelatex"
     ]
   },
   {
@@ -88,10 +104,9 @@
             "command": "latexmk",
             "args": [
                 "-synctex=1",
-                "--shell-escape",
                 "-interaction=nonstopmode",
                 "-file-line-error",
-                "-pdf",
+                "-xelatex",
                 "%DOC%"
             ]
         },
@@ -117,6 +132,13 @@
             ]
         },
         {
+          "name": "makeglossaries",
+          "command": "makeglossaries",
+          "args": [
+            "%DOCFILE%"
+          ]
+        }
+        {
             "name": "bibtex",
             "command": "bibtex",
             "args": [
@@ -130,5 +152,12 @@
 "debug.inlineValues": "on",
 "makefile.configureOnOpen": true,
 "jupyter.debugJustMyCode": false,
-"debugpy.debugJustMyCode": false
+"debugpy.debugJustMyCode": false,
+"latex-workshop.formatting.latex": "latexindent",
+"github-actions.remote-name": "upstream",
+"notebook.cellToolbarLocation": {
+  "default": "right",
+  "jupyter-notebook": "left"
+},
+"remote.SSH.connectTimeout": 180
 }

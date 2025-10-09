@@ -2,6 +2,7 @@
 
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
+export ZSH_CUSTOM=/usr/share/zsh
 export PATH=$PATH:~/.emacs.d/bin
 export EDITOR=nvim
 export GOPATH=$HOME/go
@@ -12,7 +13,10 @@ export PATH=$GOPATH/bin:$PATH
 # load a random theme each time oh-my-zsh is loaded, in which case,
 # to know which specific one was loaded, run: echo $RANDOM_THEME
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
-ZSH_THEME="spaceship"
+ZSH_THEME="clean"
+# 
+# installed via yay -S spaceship-prompt
+#source /usr/lib/spaceship-prompt/spaceship.zsh
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -74,7 +78,7 @@ COMPLETION_WAITING_DOTS="true"
 # Add wisely, as too many plugins slow down shell startup.
 
 # Set fzf installation directory path
-# export FZF_BASE=/path/to/fzf/install/dir
+export FZF_BASE=/usr/bin
 
 # Uncomment to set the FZF_DEFAULT_COMMAND
 # export FZF_DEFAULT_COMMAND='<your fzf default commmand>'
@@ -134,7 +138,7 @@ alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin:/opt/miniforge-pypy3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:opt/acc-py/:/opt/acc-eclipse/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
+export PATH="$PATH:$HOME/.local/bin:/opt/miniforge-pypy3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
@@ -144,19 +148,15 @@ eval "$(jump shell)"
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/opt/miniforge-pypy3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$('/opt/miniforge3-python/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/opt/miniforge-pypy3/etc/profile.d/conda.sh" ]; then
-        . "/opt/miniforge-pypy3/etc/profile.d/conda.sh"
+    if [ -f "/opt/miniforge3-python/etc/profile.d/conda.sh" ]; then
+        . "/opt/miniforge3-python/etc/profile.d/conda.sh"
     else
-        export PATH="/opt/miniforge-pypy3/bin:$PATH"
+        export PATH="/opt/miniforge3-python/bin:$PATH"
     fi
 fi
 unset __conda_setup
-
-if [ -f "/opt/miniforge-pypy3/etc/profile.d/mamba.sh" ]; then
-    . "/opt/miniforge-pypy3/etc/profile.d/mamba.sh"
-fi
 # <<< conda initialize <<<
