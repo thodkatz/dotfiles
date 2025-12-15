@@ -138,7 +138,7 @@ alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
 
-export PATH="$PATH:$HOME/.local/bin:/opt/miniforge-pypy3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
+export PATH="$PATH:$HOME/.local/bin:/opt/miniforge3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
@@ -148,14 +148,14 @@ eval "$(jump shell)"
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/opt/miniforge3-python/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+__conda_setup="$('/opt/miniforge3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
 if [ $? -eq 0 ]; then
     eval "$__conda_setup"
 else
-    if [ -f "/opt/miniforge3-python/etc/profile.d/conda.sh" ]; then
-        . "/opt/miniforge3-python/etc/profile.d/conda.sh"
+    if [ -f "/opt/miniforge3/etc/profile.d/conda.sh" ]; then
+        . "/opt/miniforge3/etc/profile.d/conda.sh"
     else
-        export PATH="/opt/miniforge3-python/bin:$PATH"
+        export PATH="/opt/miniforge3/bin:$PATH"
     fi
 fi
 unset __conda_setup

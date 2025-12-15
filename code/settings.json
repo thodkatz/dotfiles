@@ -33,9 +33,6 @@
     "pylint.showNotifications": "always",
     "files.autoSave": "afterDelay",
     "workbench.activityBar.location": "top",
-    "ltex.additionalRules.languageModel": "/opt/languagetool/lid.176.bin",
-    "ltex.additionalRules.enablePickyRules": true,
-    "ltex.languageToolHttpServerUri": "http://localhost:8081",
     "interactiveWindow.executeWithShiftEnter": true,
     "remote.SSH.configFile": "~/.ssh/config",
     "python.analysis.diagnosticMode": "workspace",
@@ -137,7 +134,7 @@
           "args": [
             "%DOCFILE%"
           ]
-        }
+        },
         {
             "name": "bibtex",
             "command": "bibtex",
@@ -159,5 +156,19 @@
   "default": "right",
   "jupyter-notebook": "left"
 },
-"remote.SSH.connectTimeout": 180
+"remote.SSH.connectTimeout": 180,
+"ltex.enabled": [
+  "latex",
+  "markdown",
+  "plaintext"
+],
+"ltex.additionalRules.motherTongue": "en-US",
+"ltex.language": "en-US",
+"ltex.statusBarItem": true,
+"ltex.additionalRules.enablePickyRules": true,
+"ltex.languageToolHttpServerUri": "http://localhost:8081",
+"ltex.disabledRules": {
+    "en-US": ["TOO_LONG_SENTENCE"],
+    "el-GR": ["TOO_LONG_SENTENCE"]
+  },
 }
