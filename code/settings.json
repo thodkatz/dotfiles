@@ -1,174 +1,209 @@
 {
-    "workbench.colorTheme": "Gruvbox Light Soft",
-    "codesnap.showWindowControls": false,
-    "codesnap.showLineNumbers": false,
-    "codesnap.transparentBackground": true,
-    "codesnap.boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px",
-    "codesnap.backgroundColor": "#0000",
-    "codesnap.containerPadding": "0em",
-    "[python]": {
-        "breadcrumbs.showConstructors": true,
-        "editor.formatOnType": true,
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    },
-    "editor.minimap.enabled": false,
-    "[octave]": {
-        "editor.defaultFormatter": "tusindfryd.octave-formatter"
-    },
-    "jupyter.interactiveWindow.creationMode": "perFile",
-    "jupyter.runStartupCommands": [
-        "%load_ext autoreload", "%autoreload 2"
-    ],
-    "workbench.sideBar.location": "right",
-    "workbench.editor.editorActionsLocation": "titleBar",
-    "workbench.iconTheme": "material-icon-theme",
-    "window.menuBarVisibility": "toggle",
-    "workbench.editor.tabSizing": "shrink",
-    "workbench.editor.tabSizingFixedMinWidth": 38,
-    "workbench.editor.scrollToSwitchTabs": true,
-    "workbench.editor.pinnedTabSizing": "compact",
-    "workbench.editor.highlightModifiedTabs": true,
-    "terminal.integrated.inheritEnv": false,
-    "pylint.lintOnChange": true,
-    "pylint.showNotifications": "always",
-    "files.autoSave": "afterDelay",
-    "workbench.activityBar.location": "top",
-    "interactiveWindow.executeWithShiftEnter": true,
-    "remote.SSH.configFile": "~/.ssh/config",
-    "python.analysis.diagnosticMode": "workspace",
-    "python.analysis.inlayHints.callArgumentNames": "all",
-    "python.analysis.inlayHints.functionReturnTypes": true,
-    "python.analysis.inlayHints.pytestParameters": true,
-    "python.analysis.inlayHints.variableTypes": true,
-    "python.analysis.typeCheckingMode": "standard",
-    "python.envFile": "${workspaceFolder}/.env",
-    "terminal.integrated.defaultProfile.linux": "bash",
-    "terminal.integrated.env.linux": {
+  "workbench.colorTheme": "Gruvbox Light Soft",
+  "codesnap.showWindowControls": false,
+  "codesnap.showLineNumbers": false,
+  "codesnap.transparentBackground": true,
+  "codesnap.boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px",
+  "codesnap.backgroundColor": "#0000",
+  "codesnap.containerPadding": "0em",
+  "[python]": {
+    "breadcrumbs.showConstructors": true,
+    "editor.formatOnType": true,
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "editor.minimap.enabled": false,
+  "[octave]": {
+    "editor.defaultFormatter": "tusindfryd.octave-formatter"
+  },
+  "jupyter.interactiveWindow.creationMode": "perFile",
+  "jupyter.runStartupCommands": [
+    "%load_ext autoreload",
+    "%autoreload 2"
+  ],
+  "workbench.sideBar.location": "right",
+  "workbench.editor.editorActionsLocation": "titleBar",
+  "workbench.iconTheme": "material-icon-theme",
+  "window.menuBarVisibility": "toggle",
+  "workbench.editor.tabSizing": "shrink",
+  "workbench.editor.tabSizingFixedMinWidth": 38,
+  "workbench.editor.scrollToSwitchTabs": true,
+  "workbench.editor.pinnedTabSizing": "compact",
+  "workbench.editor.highlightModifiedTabs": true,
+  "terminal.integrated.inheritEnv": false,
+  "pylint.lintOnChange": true,
+  "pylint.showNotifications": "always",
+  "files.autoSave": "afterDelay",
+  "workbench.activityBar.location": "top",
+  "interactiveWindow.executeWithShiftEnter": true,
+  "remote.SSH.configFile": "~/.ssh/config",
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.inlayHints.callArgumentNames": "all",
+  "python.analysis.inlayHints.functionReturnTypes": true,
+  "python.analysis.inlayHints.pytestParameters": true,
+  "python.analysis.inlayHints.variableTypes": true,
+  "python.analysis.typeCheckingMode": "standard",
+  "python.envFile": "${workspaceFolder}/.env",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.env.linux": {
     "CUDA_VISIBLE_DEVICES": "5"
-},
-"ruff.showNotifications": "always",
-"ruff.lint.preview": true,
-"ruff.trace.server": "messages",
-"python.analysis.autoImportCompletions": true,
-"python.analysis.completeFunctionParens": true,
-"latex-workshop.latex.autoBuild.run": "never",
-"latex-workshop.latex.build.forceRecipeUsage": false,
-"latex-workshop.latex.recipe.default": "xelatex",
-"latex-workshop.latex.recipes": [
-  {
-    "name": "xelatex",
-    "tools": [
-      "xelatex"
-    ]
   },
-  {
-    "name": "latexmk",
-    "tools": [
-      "latexmk"
-    ]
+  "ruff.nativeServer": "on",
+  "ruff.lint.preview": true,
+  "ruff.trace.server": "messages",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.completeFunctionParens": true,
+  "latex-workshop.latex.autoBuild.run": "never",
+  "latex-workshop.latex.build.forceRecipeUsage": false,
+  "latex-workshop.latex.recipe.default": "xelatex",
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "xelatex",
+      "tools": [
+        "xelatex"
+      ]
+    },
+    {
+      "name": "latexmk",
+      "tools": [
+        "latexmk"
+      ]
+    },
+    {
+      "name": "pdflatexbib",
+      "tools": [
+        "pdflatex",
+        "bibtex",
+        "pdflatex",
+        "pdflatex"
+      ]
+    },
+    {
+      "name": "xelatexglss",
+      "tools": [
+        "xelatex",
+        "makeglossaries",
+        "xelatex",
+        "xelatex"
+      ]
+    },
+    {
+      "name": "xelatexbib",
+      "tools": [
+        "xelatex",
+        "bibtex",
+        "xelatex",
+        "xelatex"
+      ]
+    }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk",
+      "command": "latexmk",
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-xelatex",
+        "%DOC%"
+      ]
+    },
+    {
+      "name": "xelatex",
+      "command": "xelatex",
+      "args": [
+        "-synctex=1",
+        "--shell-escape",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "%DOC%"
+      ]
+    },
+    {
+      "name": "pdflatex",
+      "command": "pdflatex",
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "%DOC%"
+      ]
+    },
+    {
+      "name": "makeglossaries",
+      "command": "makeglossaries",
+      "args": [
+        "%DOCFILE%"
+      ]
+    },
+    {
+      "name": "bibtex",
+      "command": "bibtex",
+      "args": [
+        "%DOCFILE%"
+      ]
+    }
+  ],
+  "debug.showVariableTypes": true,
+  "jupyter.showVariableViewWhenDebugging": true,
+  "debugpy.showPythonInlineValues": true,
+  "debug.inlineValues": "on",
+  "makefile.configureOnOpen": true,
+  "jupyter.debugJustMyCode": false,
+  "debugpy.debugJustMyCode": false,
+  "latex-workshop.formatting.latex": "latexindent",
+  "github-actions.remote-name": "upstream",
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "left"
   },
-  {
-    "name": "pdflatexbib",
-    "tools": [
-      "pdflatex",
-      "bibtex",
-      "pdflatex",
-      "pdflatex"
-    ]
-  },
-  {
-    "name": "xelatexglss",
-    "tools": [
-      "xelatex",
-      "makeglossaries",
-      "xelatex",
-      "xelatex"
-    ]
-  },
-  {
-    "name": "xelatexbib",
-    "tools": [
-      "xelatex",
-      "bibtex",
-      "xelatex",
-      "xelatex"
-    ]
-  }
-],
-"latex-workshop.latex.tools": [
-        {
-            "name": "latexmk",
-            "command": "latexmk",
-            "args": [
-                "-synctex=1",
-                "-interaction=nonstopmode",
-                "-file-line-error",
-                "-xelatex",
-                "%DOC%"
-            ]
-        },
-        {
-            "name": "xelatex",
-            "command": "xelatex",
-            "args": [
-                "-synctex=1",
-                "--shell-escape", 
-                "-interaction=nonstopmode",
-                "-file-line-error",
-                "%DOC%"
-            ]
-        },
-        {
-            "name": "pdflatex",
-            "command": "pdflatex",
-            "args": [
-                "-synctex=1",
-                "-interaction=nonstopmode",
-                "-file-line-error",
-                "%DOC%"
-            ]
-        },
-        {
-          "name": "makeglossaries",
-          "command": "makeglossaries",
-          "args": [
-            "%DOCFILE%"
-          ]
-        },
-        {
-            "name": "bibtex",
-            "command": "bibtex",
-            "args": [
-                "%DOCFILE%"
-            ]
-        }
+  "remote.SSH.connectTimeout": 180,
+  "ltex.enabled": [
+    "latex",
+    "markdown",
+    "plaintext"
+  ],
+  "ltex.additionalRules.motherTongue": "en-US",
+  "ltex.language": "en-US",
+  "ltex.statusBarItem": true,
+  "ltex.additionalRules.enablePickyRules": true,
+  "ltex.languageToolHttpServerUri": "http://localhost:8081",
+  "ltex.disabledRules": {
+    "en-US": [
+      "TOO_LONG_SENTENCE"
     ],
-"debug.showVariableTypes": true,
-"jupyter.showVariableViewWhenDebugging": true,
-"debugpy.showPythonInlineValues": true,
-"debug.inlineValues": "on",
-"makefile.configureOnOpen": true,
-"jupyter.debugJustMyCode": false,
-"debugpy.debugJustMyCode": false,
-"latex-workshop.formatting.latex": "latexindent",
-"github-actions.remote-name": "upstream",
-"notebook.cellToolbarLocation": {
-  "default": "right",
-  "jupyter-notebook": "left"
-},
-"remote.SSH.connectTimeout": 180,
-"ltex.enabled": [
-  "latex",
-  "markdown",
-  "plaintext"
-],
-"ltex.additionalRules.motherTongue": "en-US",
-"ltex.language": "en-US",
-"ltex.statusBarItem": true,
-"ltex.additionalRules.enablePickyRules": true,
-"ltex.languageToolHttpServerUri": "http://localhost:8081",
-"ltex.disabledRules": {
-    "en-US": ["TOO_LONG_SENTENCE"],
-    "el-GR": ["TOO_LONG_SENTENCE"]
+    "el-GR": [
+      "TOO_LONG_SENTENCE"
+    ]
   },
+  "chat.extensionUnification.enabled": false,
+  "claudeCode.preferredLocation": "panel",
+  "diffEditor.maxComputationTime": 0,
+  "vim.handleKeys": {
+    "<C-f>": false,
+    "<C-o>": false,
+    "<C-a>": false,
+    "<C-p>": false,
+  },
+  "vim.normalModeKeyBindingsNonRecursive": [
+    {
+      "before": [
+        "<C-n>"
+      ],
+      "commands": [
+        ":nohl"
+      ]
+    },
+  ],
+  // To improve performance
+  "extensions.experimental.affinity": {
+    "vscodevim.vim": 1
+  },
+  "vim.useSystemClipboard": true,
+  "vim.hlsearch": true,
+  "vim.easymotion": true,
+  "vim.incsearch": true,
+  "vim.useCtrlKeys": true,
+  "isort.showNotifications": "onError",
+  "python.languageServer": "Pylance"
 }
