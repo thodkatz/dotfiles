@@ -145,18 +145,3 @@ export PATH="$PATH:$HOME/.local/bin:/opt/miniforge3/bin/:/opt/matlab_2021a/bin/:
 export _JAVA_AWT_WM_NONREPARENTING=1
 
 eval "$(jump shell)"
-
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/opt/miniforge3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/opt/miniforge3/etc/profile.d/conda.sh" ]; then
-        . "/opt/miniforge3/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/miniforge3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<

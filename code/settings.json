@@ -1,5 +1,5 @@
 {
-  "workbench.colorTheme": "Gruvbox Light Soft",
+  "workbench.colorTheme": "Gruvbox Dark Soft",
   "codesnap.showWindowControls": false,
   "codesnap.showLineNumbers": false,
   "codesnap.transparentBackground": true,
@@ -205,5 +205,6 @@
   "vim.incsearch": true,
   "vim.useCtrlKeys": true,
   "isort.showNotifications": "onError",
-  "python.languageServer": "Pylance"
+  "python.languageServer": "Jedi",
+  "claudeCode.selectedModel": "opus"
 }
