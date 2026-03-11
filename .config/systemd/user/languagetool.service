@@ -1,0 +1,10 @@
+[Unit]
+Description=LanguageTool Server
+After=network.target graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/languagetool --http --config /opt/languagetool/server.properties --port 8081 --allow-origin "*"
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

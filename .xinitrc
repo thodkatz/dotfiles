@@ -6,8 +6,9 @@
 #
 #
 
-dex --autostart --environment dwm &
-exec dbus-launch dwm
+gpg-agent --daemon
+dex --autostart --environment dwm
+exec dwm
 
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
