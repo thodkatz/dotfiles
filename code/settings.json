@@ -206,5 +206,32 @@
   "vim.useCtrlKeys": true,
   "isort.showNotifications": "onError",
   "python.languageServer": "Jedi",
-  "claudeCode.selectedModel": "opus"
+  "claudeCode.selectedModel": "default",
+  "mssql.connectionGroups": [
+    {
+      "name": "ROOT",
+      "id": "ROOT"
+    }
+  ],
+  "mssql.connections": [
+    {
+      "authenticationType": "SqlLogin",
+      "connectTimeout": 30,
+      "applicationName": "vscode-mssql",
+      "applicationIntent": "ReadWrite",
+      "server": "localhost,1433",
+      "database": "",
+      "user": "sa",
+      "password": "",
+      "commandTimeout": 30,
+      "encrypt": "Mandatory",
+      "groupId": "ROOT",
+      "profileName": "mssql-local",
+      "trustServerCertificate": true,
+      "id": "b9339530-8505-4bde-848c-65f4d02d72bf",
+      "containerName": "mssql"
+    }
+  ],
+  "mssql.openQueryResultsInTabByDefault": true,
+  "mssql.openQueryResultsInTabByDefaultDoNotShowPrompt": true
 }

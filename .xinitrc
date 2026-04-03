@@ -6,9 +6,19 @@
 #
 #
 
+systemctl --user import-environment DISPLAY XAUTHORITY
 gpg-agent --daemon
 dex --autostart --environment dwm
+
+EXTERNAL=$(xrandr | grep "DP-3-1 connected")
+if [[ -n "$EXTERNAL" ]]; then
+    xrdb -merge <(echo "Xft.dpi: 96")
+else
+    xrdb -merge <(echo "Xft.dpi: 144")
+fi
+
 exec dwm
+#exec startxfce4
 
 userresources=$HOME/.Xresources
 usermodmap=$HOME/.Xmodmap
