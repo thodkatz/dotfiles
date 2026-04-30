@@ -233,5 +233,6 @@
     }
   ],
   "mssql.openQueryResultsInTabByDefault": true,
-  "mssql.openQueryResultsInTabByDefaultDoNotShowPrompt": true
+  "mssql.openQueryResultsInTabByDefaultDoNotShowPrompt": true,
+  "nix.enableLanguageServer": true
 }
