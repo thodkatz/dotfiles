@@ -137,15 +137,22 @@ alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
-alias research='~/zotero-library/research_open.sh && exit'
+alias research='~/zotero-library/research_open && exit'
 alias go2lib='cd ~/zotero-library/library'
 
-export PATH="
-$PATH:$HOME/.local/bin:/opt/miniforge3/bin/:
-/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/
-:$HOME/repos/personal/my-scripts:
-$HOME/repos/personal/dwmblocks/scripts
-"
+alias gc="git commit -m"
+alias gd="git diff"
+alias ga="git add ."
+alias gs="git status"
+
+PATH="$PATH:$HOME/.local/bin"
+PATH="$PATH:/opt/miniforge3/bin"
+PATH="$PATH:/opt/matlab_2021a/bin"
+PATH="$PATH:/opt/pycharm-community-2021.3.2/bin"
+PATH="$PATH:$HOME/repos/personal/my-scripts"
+PATH="$PATH:$HOME/repos/personal/dwmblocks/scripts"
+PATH="$PATH:$HOME/repos/personal/agentbox"
+export PATH
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
