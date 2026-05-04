@@ -140,7 +140,12 @@ alias runm='~/repos/my-scripts/runm'
 alias research='~/zotero-library/research_open.sh && exit'
 alias go2lib='cd ~/zotero-library/library'
 
-export PATH="$PATH:$HOME/.local/bin:/opt/miniforge3/bin/:/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/:$HOME/repos/personal/dotfiles:$HOME/repos/personal/dwmblocks/scripts"
+export PATH="
+$PATH:$HOME/.local/bin:/opt/miniforge3/bin/:
+/opt/matlab_2021a/bin/:/opt/pycharm-community-2021.3.2/bin/
+:$HOME/repos/personal/my-scripts:
+$HOME/repos/personal/dwmblocks/scripts
+"
 
 # fix grey UI matlab
 # source: https://wiki.archlinux.org/title/MATLAB
