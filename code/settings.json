@@ -1,5 +1,5 @@
 {
-  "workbench.colorTheme": "Gruvbox Dark Soft",
+  "workbench.colorTheme": "Gruvbox Dark Hard",
   "codesnap.showWindowControls": false,
   "codesnap.showLineNumbers": false,
   "codesnap.transparentBackground": true,
@@ -43,7 +43,7 @@
   "python.analysis.inlayHints.variableTypes": true,
   "python.analysis.typeCheckingMode": "standard",
   "python.envFile": "${workspaceFolder}/.env",
-  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.defaultProfile.linux": "zsh",
   "terminal.integrated.env.linux": {
     "CUDA_VISIBLE_DEVICES": "5"
   },
@@ -60,6 +60,12 @@
       "name": "xelatex",
       "tools": [
         "xelatex"
+      ]
+    },
+    {
+      "name": "pdflatex",
+      "tools": [
+        "pdflatex"
       ]
     },
     {
@@ -234,5 +240,19 @@
   ],
   "mssql.openQueryResultsInTabByDefault": true,
   "mssql.openQueryResultsInTabByDefaultDoNotShowPrompt": true,
-  "nix.enableLanguageServer": true
+  "nix.enableLanguageServer": true,
+  "editor.largeFileOptimizations": false,
+  "yaml.disableSchemaDetection": [
+    "**/.github/workflows/*.yml",
+    "**/.github/workflows/*.yaml",
+    "**/.gitea/workflows/*.yml",
+    "**/.gitea/workflows/*.yaml",
+    "**/.forgejo/workflows/*.yml",
+    "**/.forgejo/workflows/*.yaml"
+  ],
+  "yaml.schemas": {
+    "file:///home/thodkatz/.vscode/extensions/continue.continue-2.0.0-linux-x64/config-yaml-schema.json": [
+      ".continue/**/*.yaml"
+    ]
+  }
 }

@@ -14,7 +14,7 @@ EXTERNAL=$(xrandr | grep "DP-3-1 connected")
 if [[ -n "$EXTERNAL" ]]; then
     xrdb -merge <(echo "Xft.dpi: 96")
 else
-    xrdb -merge <(echo "Xft.dpi: 144")
+    xrdb -merge <(echo "Xft.dpi: 192")
 fi
 
 exec dwm

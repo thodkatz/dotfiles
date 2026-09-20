@@ -137,13 +137,14 @@ alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
 alias myeyes='redshift -l 40.38:22.55 &'
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 alias runm='~/repos/my-scripts/runm'
-alias research='~/zotero-library/research_open && exit'
+alias research='~/zotero-library/research && exit'
 alias go2lib='cd ~/zotero-library/library'
 
 alias gc="git commit -m"
 alias gd="git diff"
 alias ga="git add ."
 alias gs="git status"
+alias gp="git push"
 
 PATH="$PATH:$HOME/.local/bin"
 PATH="$PATH:/opt/miniforge3/bin"
@@ -174,4 +175,8 @@ else
 fi
 unset __conda_setup
 # <<< conda initialize <<<
-
+export AGENTBOX_DIR=/home/thodkatz/repos/personal/agentbox
+export PATH="$PATH:/home/thodkatz/repos/personal/agentbox"
+export AGENTBOX_CONTAINER_RUNTIME=docker
+export AGENTBOX_CONTAINER_USERNAME=thodkatz
+export AGENT_DIR=/home/thodkatz/repos/personal/agentbox/.agentbox/thodkatz-x1
