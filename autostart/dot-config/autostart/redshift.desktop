@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Redshift
+Exec=redshift -l 40.63:22.94
+Terminal=false
+X-GNOME-Autostart-enabled=true
