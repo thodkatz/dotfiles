@@ -18,6 +18,7 @@ jdinhlife.gruvbox
 jnoortheen.nix-ide
 kamikillerto.vscode-colorize
 kevinrose.vsc-python-indent
+ltex-plus.vscode-ltex-plus
 mechatroner.rainbow-csv
 mkhl.direnv
 ms-azuretools.vscode-containers
@@ -67,7 +68,6 @@ svelte.svelte-vscode
 tamasfe.even-better-toml
 tomoki1207.pdf
 twxs.cmake
-valentjn.vscode-ltex
 visualstudioexptteam.intellicode-api-usage-examples
 vscodevim.vim
 wholroyd.jinja
