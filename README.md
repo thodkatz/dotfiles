@@ -8,7 +8,7 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo apt install stow   # if not already installed
-stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd vscode
+stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode
 ```
 
 (run from the repo root; `-R` restows, so it's safe to rerun after editing a package or to
