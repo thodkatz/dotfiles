@@ -29,6 +29,15 @@ sudo stow -t /etc --dotfiles -R xorg-conf
 
 ## Code
 
+Extensions aren't auto-installed (locally or on remote hosts) — install them on demand:
+
 ```shell
 cat ./code/extensions.txt | xargs -L1 code --install-extension
 ```
+
+For a remote SSH host, run the same command from a terminal on the remote (e.g. VS Code's
+integrated terminal once connected), or use the `Remote-SSH: Install Local Extensions in SSH
+Host...` command from the Command Palette.
+
+After installing/removing extensions locally, run `./code/sync-extensions.sh` to refresh
+`extensions.txt` from what's currently installed.
