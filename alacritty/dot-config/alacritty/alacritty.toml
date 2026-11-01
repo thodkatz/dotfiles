@@ -10,7 +10,7 @@ history = 10000
 save_to_clipboard = true
 
 [font]
-size = 18
+size = 14
 
 [font.bold]
 family = "Inconsolata"
