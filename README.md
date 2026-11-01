@@ -27,6 +27,9 @@ root and a separate command instead of being included in the bulk install above:
 sudo stow -t /etc --dotfiles -R xorg-conf
 ```
 
+The touchpad config is `X11/xorg.conf.d/99-touchpad.conf` (it used to be `70-touchpad.conf`;
+if that old symlink is still in `/etc/X11/xorg.conf.d/`, delete it). Restart X to apply it.
+
 ## Code
 
 Extensions aren't auto-installed (locally or on remote hosts) — install them on demand:
