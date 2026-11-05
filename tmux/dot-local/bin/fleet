@@ -176,6 +176,16 @@ target_session() {
   return 1
 }
 
+# An agent pane's title: `<icon> <guest> · <branch> · <live>`, the icon from
+# live_icon. agent-methodology's status.sh table uses the same icons.
+live_icon() {
+  case $1 in
+    alive) echo 🟢 ;; waiting) echo ⏳ ;; stalled) echo 🟡 ;; blocked*) echo ✋ ;;
+    dead) echo 🔴 ;; ended) echo ⚫ ;; done) echo ✅ ;; gone) echo 👻 ;;
+  esac
+}
+pane_title() { local i; i=$(live_icon "$3"); echo "${i:+$i }$1 · $2 · $3"; }
+
 # Lay the session out from its fleet.json; see the spec's *Sync*.
 sync_layout() {
   local s=$1 d json g pid entry ended psock e host guest ip repo branch live sock title w wid have
@@ -193,7 +203,7 @@ sync_layout() {
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket.
   declare -A att=() paned=() bysock=() newtitle=()
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
-    att[$entry]=1 bysock["$ip $sock"]=$entry newtitle[$entry]="$guest · $branch · $live"
+    att[$entry]=1 bysock["$ip $sock"]=$entry newtitle[$entry]=$(pane_title "$guest" "$branch" "$live")
   done < <(attachable "$json")
   # Tagged agent panes.
   # \037, not a tab: read collapses runs of whitespace, and an empty @fleet-ended would shift @fleet-sock into it
@@ -202,17 +212,19 @@ sync_layout() {
     # A hop: the pane's entry is gone, but its socket is a live entry's that has no pane yet. Same attach, retag it.
     if [ -z "${att[$entry]:-}" ] && [ "$ended" != 1 ] && [ -n "$psock" ] && e=${bysock[$psock]:-} && [ -n "$e" ] &&
       [ -z "${paned[$e]:-}" ]; then
-      tmx set -p -t "$pid" @fleet-entry "$e"
-      tmx set -p -t "$pid" @fleet-title "${newtitle[$e]}"
+      tmx set -p -t "$pid" @fleet-entry "$e"   # its title follows below, as any attachable entry's
       entry=$e
     fi
     if [ -n "${att[$entry]:-}" ]; then
-      if [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"; else paned[$entry]=1; fi
+      # Still attachable: refresh the title, its live (and icon) may have changed since the last sync.
+      if [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"; else paned[$entry]=1; tmx set -p -t "$pid" @fleet-title "${newtitle[$entry]}"; fi
       continue
     fi
     title=$(jq -r --arg e "$entry" 'def q: if . == null or . == "" then "?" else tostring end;
-      first(.[] | .guest as $g | .rows[]? | select(.entry == $e) | "\($g) · \(.branch | q) · \(.live | q)") // empty' "$json")
-    if [ -n "$title" ]; then tmx set -p -t "$pid" @fleet-title "$title"   # blocked or stopped
+      first(.[] | .guest as $g | .rows[]? | select(.entry == $e) | [$g, (.branch | q), (.live | q)] | join("\t")) // empty' "$json")
+    if [ -n "$title" ]; then                                              # blocked or stopped
+      IFS=$'\t' read -r guest branch live <<<"$title"
+      tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")"
     elif [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"                   # gone, and its attach has ended
     fi
   done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}')
@@ -228,7 +240,7 @@ sync_layout() {
       pid=$(tmx new-window -d -t "=$s:" -n "$w" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
     fi
     tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
-    tmx set -p -t "$pid" @fleet-title "$guest · $branch · $live" 2>/dev/null
+    tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")" 2>/dev/null
     tmx set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
   done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
 }

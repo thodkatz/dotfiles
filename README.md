@@ -86,8 +86,9 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | status bar `nixos 3▶ 2⚠ · ↻1` | per host: live sessions, sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes have an orange title on their border (`<guest> · <branch> · <state>`); your own panes show their
-command. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+Agent panes have an orange title on their border (`<icon> <guest> · <branch> · <state>`, as of the last sync);
+your own panes show their command. The icon: 🟢 alive, ⏳ waiting for a usage-limit reset, 🟡 stalled, ✋ blocked on
+you, 🔴 dead, ⚫ ended early, ✅ done, 👻 gone (worktree removed). After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).
