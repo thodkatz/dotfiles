@@ -228,7 +228,7 @@ Laptop (Arch) setup, once:
 
 ```shell
 sudo pacman -S tmux jq fzf
-mkdir -p ~/.config ~/.local/bin      # so stow links files into them, not the directories themselves
+mkdir -p ~/.config/fleet ~/.local/bin      # so stow links files into them, not the directories themselves
 stow -t "$HOME" --dotfiles -R tmux
 git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm
 tmux                                  # then prefix I installs the plugins
@@ -1461,6 +1461,15 @@ merge (nixed's `AGENTS.md`, *Development workflow*). Needs the user's `switch` o
 - Plugin entry files (checked against nixpkgs while planning; each is the attr's `.rtp`):
   `pkgs.tmuxPlugins.{catppuccin (2.1.3), tmux-sessionx, extrakto, yank, resurrect, continuum}`.
 
+**Inputs from slices 1–2's final review:**
+- Guest ssh: under `--local`, `fleet` passes `-i ~/.agentvm/keys/id_ed25519` itself when that file exists (it does
+  on both hosts), so nothing in nixed has to set up a key for it.
+- `~/.local/bin` is not on the hosts' `PATH`: Step 2 adds `home.sessionPath = [ "$HOME/.local/bin" ];`.
+- Keeping `fleet`/`fleet-*` out of resurrect's saves is a hook in `tmux.conf` itself; `plugins.tmux` needs
+  nothing for it.
+- `fleet doctor` cannot catch a dangling `tmux.conf` link (`fleet` is linked the same way, so it dangles too):
+  the guide's setup step checks the links with `readlink -e` (Step 4).
+
 - [ ] **Step 1: The check that fails today**
 
 Run (nixed root): `grep -n 'programs.tmux' modules/home.nix`
@@ -1496,9 +1505,10 @@ replace the `programs.tmux` block (and its comment) with:
     set -g @continuum-restore 'off'
   '' + lib.concatMapStrings (p: "run-shell ${p.rtp}\n") tmuxPlugins;
   # fleet --local shows this host's guests. tmux.conf's key binding and status
-  # bar run ~/.local/bin/fleet; the wrapper in home.packages puts it on PATH,
-  # which ~/.local/bin is not on here.
+  # bar run ~/.local/bin/fleet by full path; sessionPath puts it on the shell's
+  # PATH too, which ~/.local/bin is not on here.
   home.file.".local/bin/fleet".source = linkDotfile "tmux/dot-local/bin/fleet";
+  home.sessionPath = [ "$HOME/.local/bin" ];
 ```
 
 and extend `home.packages` (keep its comment; add a line to it: `tmux, jq and fzf: for dotfiles' tmux config and
@@ -1509,7 +1519,6 @@ fleet`):
     eduvpn-client
     ripgrep fd bat eza dust duf sd yq-go difftastic ast-grep tokei hyperfine
     tmux jq fzf
-    (writeShellScriptBin "fleet" ''exec ${dotfiles}/tmux/dot-local/bin/fleet "$@"'')
   ];
 ```
 
@@ -1524,7 +1533,9 @@ existing everyday-key sections that still hold (sessions, windows, panes, copy m
 
 - [ ] **Step 4: `docs/guides/host-operations.md`.** In *First-time setup on a new machine*, step 1 becomes: clone
 this repo **and** dotfiles into `~/repos` (`~/repos/nixed`, `~/repos/dotfiles`), noting that home-manager links
-the tmux config and `fleet` into the dotfiles checkout and they dangle without it. Where the guide sets up
+the tmux config and `fleet` into the dotfiles checkout and they dangle without it, so the step ends with a check
+that both resolve: `readlink -e ~/.config/tmux/tmux.conf ~/.local/bin/fleet` prints two paths (`fleet doctor`
+can't catch this: it is one of the dangling links). Where the guide sets up
 `thinkcentre`, add the one-time `git clone <dotfiles remote> ~/repos/dotfiles` as `theo` before the deploy that
 carries this change.
 
@@ -1552,7 +1563,7 @@ input; what the host must do: clone dotfiles on `thinkcentre`, `switch` on `nixo
 waits on the user`.
 
 - [ ] **Step 8: After the user's switch (manual, on `nixos`).** D1/D3's checks:
-`readlink ~/.config/tmux/tmux.conf` points into `~/repos/dotfiles`; `grep -c '^run-shell'
+`readlink -e ~/.config/tmux/tmux.conf ~/.local/bin/fleet` both point into `~/repos/dotfiles`; `grep -c '^run-shell'
 ~/.config/tmux/plugins.tmux` prints `6`; in a new tmux server `tmux list-keys | grep -E 'sessionx|extrakto'`
 shows both and `tmux show -g @continuum-restore` is `off`; `fleet --local` shows `nixos`'s guests. Same on
 `thinkcentre`. Then the BACKLOG line goes.

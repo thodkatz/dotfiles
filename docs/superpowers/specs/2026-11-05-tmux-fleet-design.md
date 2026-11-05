@@ -61,8 +61,8 @@ distinguishable (decision 12). Slice 1 has its own smaller sample: the restyled 
 - `dot-local/bin/fleet`: the tool.
 - `dot-config/fleet/hosts`: one host per line, `nixos` and `thinkcentre`.
 - `tests/fleet.bats` and `tests/fixtures/`: not stowed (outside the package).
-- `README.md`: the Arch setup: `pacman -S tmux jq fzf bash-bats`, clone TPM, stow `tmux`, `tailscale up
-  --accept-routes`, `fleet doctor`.
+- `README.md`: the Arch setup: `pacman -S tmux jq fzf xclip bash-bats`, clone TPM, stow `tmux`, `tailscale up
+  --accept-routes`, the guest-key `~/.ssh/config` stanzas, `fleet doctor`.
 
 **nixed** (slice 3):
 
@@ -77,8 +77,9 @@ distinguishable (decision 12). Slice 1 has its own smaller sample: the restyled 
 
 Why symlinks, not a flake input: dotfiles is private, and a `nixos-rebuild` as root would need a GitHub token
 to fetch it. A link to the checkout the host already has needs none, takes edits without a rebuild, and is the
-same kind of hand-checked host path as nixed's `repoRoot`. The cost: a host without `~/repos/dotfiles` gets a
-dangling `tmux.conf` link, which `fleet doctor` and the guide's setup step cover.
+same kind of hand-checked host path as nixed's `repoRoot`. The cost: a host without `~/repos/dotfiles` gets
+dangling `tmux.conf` and `fleet` links, which the guide's setup step checks with `readlink -e` (`fleet doctor`
+can't: it dangles too).
 
 ## Discovery
 
@@ -89,8 +90,16 @@ For each host in `~/.config/fleet/hosts` (or, under `--local`, this machine alon
 supervisor's own view by construction: no second list of repos to keep.
 
 All ssh calls: `-o BatchMode=yes -o ConnectTimeout=5`, guests in parallel (background jobs, one output file each
-under `$XDG_RUNTIME_DIR/fleet/`), then joined. The laptop reaches guests directly over the tailnet routes each
+in a temporary directory under the session's state directory), then joined; a guest's probe runs under
+`timeout` (`FLEET_PROBE_TIMEOUT`, 30 s). State lives in `${XDG_RUNTIME_DIR:-/tmp}/fleet-$UID/<session>/`:
+`fleet.json`, `hint`, `hintloop.pid`, `sync.lock`. The laptop reaches guests directly over the tailnet routes each
 host advertises; on a host, over its own bridge.
+
+Guest ssh also adds `-o StrictHostKeyChecking=accept-new`, and `-i "$AGENTVM_KEY"` when that is set, else, under
+`--local`, `-i ~/.agentvm/keys/id_ed25519` when it exists (the host's own agentvm key); never `IdentitiesOnly`.
+On the laptop the key comes from `~/.ssh/config`: one stanza per guest subnet (`192.168.122.*` nixos,
+`192.168.123.*` thinkcentre) naming `User agentvm` and a copy of that host's key; `fleet doctor` shows ssh's own
+error for a guest it can't reach (Clarification 5).
 
 ## Layout
 
@@ -113,19 +122,26 @@ Session `fleet`, or `fleet-<host>` under `--local`.
 1. Discover (above).
 2. For each attachable entry with no tagged pane: add the pane to its window, creating the window if missing;
    `select-layout tiled` on that window only.
-3. For each tagged pane: if its process has exited and its entry is gone, kill it; if its entry is now blocked
-   or stopped, leave it with its last screen and set its title to the new state; if it is a plain shell (a
-   resurrect restore), replace it with a fresh attach.
+3. For each tagged pane: an attach that has ended (the session ended, or the link was lost: ssh exited 255)
+   marks the pane `@fleet-ended` and leaves it with its last screen and a `[fleet] session ended` or `[fleet]
+   link lost` line. If its entry is still attachable, an ended pane is killed and replaced with a fresh attach;
+   if its entry is now blocked or stopped, the pane stays and its title is set to the new state; if its entry is
+   gone (or its guest unreachable this time), an ended pane is killed and a live one kept. A resurrect restore
+   never reaches this step: `fleet` rebuilds a restored session (Clarification 3), and saves leave fleet's
+   sessions out (Clarification 6).
 4. Untagged panes and windows not named `<host>·<repo>` are never touched.
 5. Refresh the hint cache.
+
+One sync at a time per session (`flock -n` on its `sync.lock`): a second exits 0 and says one is running.
+`prefix F` shows `fleet: syncing…` as it starts.
 
 Nothing ever syncs on its own: panes never appear or move while the user types into an agent.
 
 ## Hint
 
 A background loop started with the session (`run-shell -b`, one per server, a pid file guards it) runs
-discovery every 60 s and writes `$XDG_RUNTIME_DIR/fleet/hint`. `status-right` runs `fleet hint`, which only
-`cat`s that file. Format: one `<host> N▶ M⚠` group per host, `·` between, then `↻K` when attachable entries
+discovery every 60 s and writes the session's `hint` (state directory above), removing it when the session ends.
+`status-right` runs `fleet hint`, which only `cat`s that file, and only while its session exists. Format: one `<host> N▶ M⚠` group per host, `·` between, then `↻K` when attachable entries
 have no pane.
 
 ## Plugins, keys, theme
@@ -136,7 +152,7 @@ have no pane.
 | tmux-sessionx | fuzzy jump to any session/window with preview | `prefix f` (not its default `O`) |
 | extrakto | pick hashes, paths, URLs, `#PR` from agent output | `prefix Tab` (its default) |
 | tmux-yank | copy mode to the system clipboard on the laptop | `y` in copy mode; hosts keep OSC 52 (`set-clipboard on`) |
-| tmux-resurrect | restore the user's own windows after a laptop reboot | `@resurrect-processes` without `ssh` |
+| tmux-resurrect | restore the user's own windows after a laptop reboot | `@resurrect-processes` without `ssh`; `@resurrect-hook-post-save-layout` drops `fleet`/`fleet-*` from each save (Clarification 6) |
 | tmux-continuum | save every 15 min; auto-restore on the laptop only | `@continuum-restore on` in the laptop's `plugins.tmux` only |
 
 `pane-border-status top`; the format shows an agent pane's `@fleet-title` in an accent colour (orange, bold),
@@ -179,6 +195,8 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
   optional, its own change; until then decision 15's tolerance covers drift.
 - **Auto-sync**: rejected (panes would move under the user's typing); the hint replaces it.
 - **Read-only agent panes**: rejected for now in favour of interactive attach with distinct borders.
+- **Overview when every host is down**: its first pane is a `-` guest with nothing useful in it; show one line
+  saying no host answered instead.
 
 ## Clarifications
 
@@ -195,3 +213,13 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
 4. **The accent is on the border title, not a per-pane border style** (decision 12) — `folded`. Adjacent panes share
    a border line, so a per-pane `pane-border-style` cannot mark one pane; `pane-border-format` colours the title
    of panes with `@fleet-entry` instead, which needs no per-pane setting from `fleet`.
+5. **Guests are reached with their host's agentvm key** (decisions 4, 9, 14) — `folded`. Guests trust only the
+   per-host key `~/.agentvm/keys/id_ed25519` and their host keys are in no `known_hosts`, so plain `BatchMode`
+   ssh to a guest IP was refused. Guest ssh adds `StrictHostKeyChecking=accept-new` and an identity
+   (`AGENTVM_KEY`, else the host's own under `--local`), never `IdentitiesOnly`, so the laptop's
+   `~/.ssh/config` stanzas per guest subnet supply the key there. Rewritten in *Discovery*.
+6. **resurrect saves leave fleet's sessions out** (decision 13) — `folded`. A restore adds panes into sessions
+   that already exist, so one after `fleet` started its session left untagged shells and duplicate
+   `<host>·<repo>` windows in it. `tmux.conf` sets `@resurrect-hook-post-save-layout` to a `sed` that deletes the
+   `pane` and `window` lines of sessions `fleet` and `fleet-*` from the save file (resurrect appends the file's
+   path; field 2 is the session). Rewritten in *Sync* and *Plugins, keys, theme*.
