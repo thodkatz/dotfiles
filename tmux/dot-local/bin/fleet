@@ -188,7 +188,7 @@ pane_title() { local i; i=$(live_icon "$3"); echo "${i:+$i }$1 · $2 · $3"; }
 
 # Lay the session out from its fleet.json; see the spec's *Sync*.
 sync_layout() {
-  local s=$1 d json g pid entry ended psock e host guest ip repo branch live sock title w wid have
+  local s=$1 d json g pid entry ended psock cmd e host guest ip repo branch live sock title w wid have
   d=$(sdir "$s"); json=$d/fleet.json
   # Overview: one pane per guest.
   have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
@@ -200,38 +200,56 @@ sync_layout() {
   done < <(jq -r '.[] | select(.guest != "-") | .guest' "$json")
 
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
-  # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket.
-  declare -A att=() paned=() bysock=() newtitle=()
+  # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
+  # socket has one pane: a second would mirror the first, scrolling included.
+  declare -A att=() paned=() bysock=() sockpaned=() newtitle=()
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
     att[$entry]=1 bysock["$ip $sock"]=$entry newtitle[$entry]=$(pane_title "$guest" "$branch" "$live")
   done < <(attachable "$json")
+  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RETAGGED=0
   # Tagged agent panes.
   # \037, not a tab: read collapses runs of whitespace, and an empty @fleet-ended would shift @fleet-sock into it
-  while IFS=$'\037' read -r pid entry ended psock; do
+  while IFS=$'\037' read -r pid entry ended psock cmd; do
     [ -n "$entry" ] || continue
-    # A hop: the pane's entry is gone, but its socket is a live entry's that has no pane yet. Same attach, retag it.
-    if [ -z "${att[$entry]:-}" ] && [ "$ended" != 1 ] && [ -n "$psock" ] && e=${bysock[$psock]:-} && [ -n "$e" ] &&
-      [ -z "${paned[$e]:-}" ]; then
-      tmx set -p -t "$pid" @fleet-entry "$e"   # its title follows below, as any attachable entry's
+    # A pane made before @fleet-sock: its socket is the last two words of its `_attach <ip> <sock>` command.
+    if [ -z "$psock" ] && psock=$(awk '{ gsub(/"/, ""); for (i = 1; i < NF - 1; i++) if ($i == "_attach") { print $(i + 1), $(i + 2); exit } }' <<<"$cmd") &&
+      [ -n "$psock" ]; then
+      tmx set -p -t "$pid" @fleet-sock "$psock"
+    fi
+    # A hop: the pane's entry is gone, but its socket is a live entry's. Same attach, retag it.
+    if [ -z "${att[$entry]:-}" ] && [ "$ended" != 1 ] && [ -n "$psock" ] && e=${bysock[$psock]:-} && [ -n "$e" ]; then
+      if [ -z "${paned[$e]:-}" ] && [ -z "${sockpaned[$psock]:-}" ]; then
+        tmx set -p -t "$pid" @fleet-entry "$e"   # its title follows below, as any attachable entry's
+        SYNC_RETAGGED=$((SYNC_RETAGGED + 1))
+      fi
       entry=$e
     fi
+    if [ "$ended" = 1 ]; then
+      # Its attach has ended: closed, whether its entry is attachable (a fresh attach replaces it below), blocked,
+      # stopped or gone. The overview still shows the entry's state.
+      tmx kill-pane -t "$pid"; SYNC_CLOSED=$((SYNC_CLOSED + 1)); continue
+    fi
     if [ -n "${att[$entry]:-}" ]; then
+      if [ -n "${paned[$entry]:-}" ] || { [ -n "$psock" ] && [ -n "${sockpaned[$psock]:-}" ]; }; then
+        tmx kill-pane -t "$pid"; SYNC_CLOSED=$((SYNC_CLOSED + 1)); continue   # a second pane on one dtach
+      fi
       # Still attachable: refresh the title, its live (and icon) may have changed since the last sync.
-      if [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"; else paned[$entry]=1; tmx set -p -t "$pid" @fleet-title "${newtitle[$entry]}"; fi
+      paned[$entry]=1; [ -z "$psock" ] || sockpaned[$psock]=1
+      tmx set -p -t "$pid" @fleet-title "${newtitle[$entry]}"
       continue
     fi
     title=$(jq -r --arg e "$entry" 'def q: if . == null or . == "" then "?" else tostring end;
       first(.[] | .guest as $g | .rows[]? | select(.entry == $e) | [$g, (.branch | q), (.live | q)] | join("\t")) // empty' "$json")
-    if [ -n "$title" ]; then                                              # blocked or stopped
+    if [ -n "$title" ]; then                                              # a live attach, now blocked or stopped
       IFS=$'\t' read -r guest branch live <<<"$title"
       tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")"
-    elif [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"                   # gone, and its attach has ended
     fi
-  done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}')
+  done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}\037#{pane_start_command}')
 
-  # A pane for each attachable entry that has none, by host then repo.
+  # A pane for each attachable entry that has none, on a socket that has none, by host then repo.
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
-    [ -z "${paned[$entry]:-}" ] || continue
+    [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
+    sockpaned["$ip $sock"]=1
     w="$host·$repo" pid=''
     wid=$(tmx list-windows -t "=$s" -F $'#{window_id}\t#{window_name}' | awk -F '\t' -v n="$w" '$2 == n { id = $1 } END { print id }')
     if [ -n "$wid" ] && pid=$(tmx split-window -d -t "$wid" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")" 2>/dev/null); then
@@ -239,6 +257,7 @@ sync_layout() {
     else
       pid=$(tmx new-window -d -t "=$s:" -n "$w" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
     fi
+    SYNC_ADDED=$((SYNC_ADDED + 1))
     tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
     tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")" 2>/dev/null
     tmx set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
@@ -310,6 +329,13 @@ cmd_sync() {
   discover "$(sdir "$s")/fleet.json"
   sync_layout "$s"
   hint_write "$s"
+  # Prefix F shows this line: a sync can take a while, and without it one that changed nothing looks like none ran.
+  local did=()
+  [ "$SYNC_ADDED" = 0 ] || did+=("$SYNC_ADDED added")
+  [ "$SYNC_CLOSED" = 0 ] || did+=("$SYNC_CLOSED closed")
+  [ "$SYNC_RETAGGED" = 0 ] || did+=("$SYNC_RETAGGED followed a hop")
+  if [ ${#did[@]} = 0 ]; then echo "fleet: synced $s, nothing to change"
+  else local line; printf -v line '%s, ' "${did[@]}"; echo "fleet: synced $s: ${line%, }"; fi
 }
 
 cmd_hint() {

@@ -129,17 +129,27 @@ wait_attached() {
   [ "$(t list-panes -t =fleet:2 -F '#{@fleet-entry}' | grep -c '^$')" -eq 1 ]
 }
 
-@test "sync: a gone entry whose attach ended is closed; a blocked one is retitled (D8)" {
+@test "sync: an ended pane whose entry is gone or no longer attachable is closed (D8)" {
   touch "$FLEET_FIXTURES/attach-exits"
   "$FLEET" up
   wait_ended
-  # e-nixed-1 is gone; e-nixed-stall is now blocked (no continue).
+  # e-nixed-1 is gone; e-nixed-stall is now blocked (no continue): its row stays, its attach has ended all the same.
   drop_row 192.168.122.51 e-nixed-1
   jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" sync -t fleet
   run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
   [[ "$output" != *'e-nixed-1|'* ]]
+  [[ "$output" != *'e-nixed-stall|'* ]]
+}
+
+@test "sync: a live pane whose entry is now blocked stays, retitled (D8)" {
+  "$FLEET" up
+  wait_attached e-nixed-stall
+  jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  "$FLEET" sync -t fleet
+  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
   [[ "$output" == *'e-nixed-stall|✋ agentvm-repos · impl/x · blocked #9'* ]]
 }
 
@@ -171,6 +181,48 @@ wait_attached() {
   run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-title}'
   [[ "$output" == *"$old|e-nixed-1b|🟢 agentvm-repos · impl/z · alive"* ]]
   [[ "$output" != *'|e-nixed-1|'* ]]
+}
+
+@test "sync: a hop keeps a pane made before @fleet-sock, its socket read from its command" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  t set -p -u -t "$old" @fleet-sock
+  before=$(t list-panes -a -F '#{pane_id}' | sort)
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-sock}'
+  [[ "$output" == *"$old|e-nixed-1b|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock"* ]]
+}
+
+@test "sync: of two live panes on one socket, the stale one is closed" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  # What a hop made of a pane without @fleet-sock: the old pane, still tagged with the hop's previous entry, and a
+  # second one on the same socket for the new entry.
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  dup=$(t split-window -d -t "$wid" -P -F '#{pane_id}' 'sleep 600')
+  t set -p -t "$dup" @fleet-entry e-nixed-1b
+  t set -p -t "$dup" @fleet-sock '192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock'
+  "$FLEET" sync -t fleet
+  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-sock}'
+  [ "$(grep -c '|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock$' <<<"$output")" -eq 1 ]
+  [[ "$output" == *'e-nixed-1b|'* ]]
+}
+
+@test "sync: says what it did" {
+  "$FLEET" up
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet, nothing to change' ]
+  add_row 192.168.122.51 "$NEW_ROW"
+  drop_row 192.168.122.51 e-nixed-stall
+  touch "$FLEET_FIXTURES/attach-exits"
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet: 1 added' ]
 }
 
 @test "sync: a title's icon follows its live value, refreshed on every sync" {
