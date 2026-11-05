@@ -200,6 +200,29 @@ sync_layout() {
   done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
 }
 
+# --- hint ----------------------------------------------------------------
+
+# Write <state>/<s>/hint from its fleet.json: `<host> N▶ M⚠` per host, then
+# `↻K` for attachable entries with no pane.
+hint_write() {
+  local s=$1 d k entry
+  d=$(sdir "$s")
+  declare -A paned=()
+  while read -r entry; do [ -z "$entry" ] || paned[$entry]=1; done \
+    < <(tmx list-panes -s -t "=$s" -F '#{@fleet-entry}' 2>/dev/null)
+  k=0
+  while IFS=$'\t' read -r entry _; do [ -n "${paned[$entry]:-}" ] || k=$((k + 1)); done < <(attachable "$d/fleet.json")
+  jq -r --argjson k "$k" '
+    group_by(.host) | map(.[0].host as $h
+      | if all(.[]; .status != "ok") then "\($h) ✗"
+        else [.[] | select(.status == "ok") | .rows[]] as $r
+          | "\($h) \([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)▶ \([$r[] | select((.kind // "") != "" or .state == "blocked")] | length)⚠"
+        end)
+    | join(" · ") + (if $k > 0 then " · ↻\($k)" else "" end)' "$d/fleet.json" > "$d/hint.tmp" && mv -f "$d/hint.tmp" "$d/hint"
+}
+
+hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
+
 # --- commands ------------------------------------------------------------
 
 cmd_up() {
@@ -219,7 +242,9 @@ cmd_up() {
   tmx set -p -t "$pid" @fleet-guest "$first"
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" 1
+  [ -n "${FLEET_NO_HINTLOOP:-}" ] || tmx run-shell -b "$(self_cmd _hintloop "$s")"
   sync_layout "$s"
+  hint_write "$s"
 }
 
 cmd_sync() {
@@ -228,6 +253,23 @@ cmd_sync() {
   use_session "$s"   # target_session ran in a subshell
   discover "$(sdir "$s")/fleet.json"
   sync_layout "$s"
+  hint_write "$s"
+}
+
+cmd_hint() {
+  local t='' refresh=0 s
+  while [ $# -gt 0 ]; do
+    case $1 in -t) t=${2:-}; shift ;; --refresh) refresh=1 ;; esac
+    shift
+  done
+  if [ "$refresh" = 1 ]; then
+    s=$(target_session "$t") || exit 0
+    use_session "$s"
+    hint_refresh "$s"
+  fi
+  [ -n "$t" ] && [ -r "$(sdir "$t")/hint" ] && { cat "$(sdir "$t")/hint"; exit 0; }
+  cat "$(sdir fleet)/hint" 2>/dev/null
+  exit 0
 }
 
 cmd_status() {
@@ -264,6 +306,21 @@ cmd__overview() {
   done
 }
 
+# Background (run-shell -b): refresh the hint while the session lives.
+cmd__hintloop() {
+  local s=$1 pidf
+  pidf=$(sdir "$s")/hintloop.pid
+  mkdir -p "$(sdir "$s")"
+  if [ -r "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then return 0; fi
+  echo $$ > "$pidf"
+  use_session "$s" || return 0
+  while tmx has-session -t "=$s" 2>/dev/null; do
+    hint_refresh "$s"
+    sleep "${FLEET_HINT_INTERVAL:-60}"
+  done
+  rm -f "$pidf"
+}
+
 usage() {
   cat <<'EOF'
 usage: fleet [--local] [command]
@@ -294,8 +351,10 @@ main() {
       else exec tmux ${FLEET_TMUX_SOCKET:+-L "$FLEET_TMUX_SOCKET"} attach -t "=$(default_session)"; fi ;;
     up) cmd_up ;;
     sync) if [ "${1:-}" = -t ]; then cmd_sync "${2:-}"; else cmd_sync; fi ;;
+    hint) cmd_hint "$@" ;;
     _overview) cmd__overview "$@" ;;
     _attach) cmd__attach "$@" ;;
+    _hintloop) cmd__hintloop "$@" ;;
     ls) guests ;;
     status) [ $# -ge 1 ] || die "usage: fleet status GUEST"; cmd_status "$1" ;;
     help|-h|--help) usage ;;

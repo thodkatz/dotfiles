@@ -207,3 +207,35 @@ wait_attached() {
   "$FLEET" sync -t fleet
   [[ "$(entries)" == *e-am-1* ]]
 }
+
+@test "hint: counts per host and unpaned entries (D10)" {
+  "$FLEET" up
+  add_row 192.168.122.51 "$NEW_ROW"
+  run "$FLEET" hint -t fleet --refresh
+  [ "$status" -eq 0 ]
+  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠ · ↻1" ]
+  run "$FLEET" hint -t fleet
+  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠ · ↻1" ]
+}
+
+@test "hint: an unreachable host shows ✗; no cache prints nothing (D10)" {
+  run "$FLEET" hint -t fleet
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  "$FLEET" up
+  run "$FLEET" hint -t fleet
+  [ "$output" = "nixos 2▶ 2⚠ · thinkcentre ✗" ]
+}
+
+@test "sync and hint from a session fleet did not make act on fleet's (prefix F anywhere)" {
+  "$FLEET" up
+  t new-session -d -s mine 'sleep 600'
+  add_row 192.168.122.51 "$NEW_ROW"
+  run "$FLEET" sync -t mine
+  [ "$status" -eq 0 ]
+  [[ "$(entries)" == *e-nixed-2* ]]
+  [ "$(t list-panes -t =mine -F x | wc -l)" -eq 1 ]
+  run "$FLEET" hint -t mine
+  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠" ]
+}
