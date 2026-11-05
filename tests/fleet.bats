@@ -239,3 +239,12 @@ wait_attached() {
   run "$FLEET" hint -t mine
   [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠" ]
 }
+
+@test "hint: a foreign session under --local falls back to fleet-<host>, not fleet (D6, D10)" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  "$FLEET" --local up
+  t new-session -d -s mine 'sleep 600'
+  run "$FLEET" hint -t mine
+  [ "$status" -eq 0 ]
+  [ "$output" = "nixos 2▶ 2⚠" ]
+}

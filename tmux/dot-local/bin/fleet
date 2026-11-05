@@ -268,7 +268,9 @@ cmd_hint() {
     hint_refresh "$s"
   fi
   [ -n "$t" ] && [ -r "$(sdir "$t")/hint" ] && { cat "$(sdir "$t")/hint"; exit 0; }
-  cat "$(sdir fleet)/hint" 2>/dev/null
+  for s in fleet "fleet-$(local_host)"; do
+    [ -r "$(sdir "$s")/hint" ] && { cat "$(sdir "$s")/hint"; exit 0; }
+  done
   exit 0
 }
 
