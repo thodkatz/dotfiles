@@ -155,6 +155,24 @@ wait_attached() {
   [[ "$new" != *' 1' ]]
 }
 
+@test "sync: a hop (new entry, same socket) keeps its pane, retagged and retitled" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  before=$(t list-panes -a -F '#{pane_id}' | sort)
+  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  # chain.sh's next run: a new registry entry in the same dtach, on another branch; the old entry is no row now.
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  # Before the sync, the hint already counts the hop's entry as paned: its socket has a pane.
+  run "$FLEET" hint -t fleet --refresh
+  [[ "$output" != *'↻'* ]]
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-title}'
+  [[ "$output" == *"$old|e-nixed-1b|agentvm-repos · impl/z · alive"* ]]
+  [[ "$output" != *'|e-nixed-1|'* ]]
+}
+
 @test "attach: a detach (socket still there) closes the pane (D11)" {
   touch "$FLEET_FIXTURES/attach-exits" "$FLEET_FIXTURES/sock-alive"
   "$FLEET" up

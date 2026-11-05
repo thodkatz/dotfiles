@@ -178,7 +178,7 @@ target_session() {
 
 # Lay the session out from its fleet.json; see the spec's *Sync*.
 sync_layout() {
-  local s=$1 d json g pid entry ended host guest ip repo branch live sock title w wid have
+  local s=$1 d json g pid entry ended psock e host guest ip repo branch live sock title w wid have
   d=$(sdir "$s"); json=$d/fleet.json
   # Overview: one pane per guest.
   have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
@@ -189,11 +189,23 @@ sync_layout() {
     tmx select-layout -t "=$s:overview" tiled >/dev/null
   done < <(jq -r '.[] | select(.guest != "-") | .guest' "$json")
 
-  declare -A att=() paned=()
-  while IFS=$'\t' read -r entry _; do att[$entry]=1; done < <(attachable "$json")
+  # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
+  # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket.
+  declare -A att=() paned=() bysock=() newtitle=()
+  while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
+    att[$entry]=1 bysock["$ip $sock"]=$entry newtitle[$entry]="$guest · $branch · $live"
+  done < <(attachable "$json")
   # Tagged agent panes.
-  while IFS=$'\t' read -r pid entry ended; do
+  # \037, not a tab: read collapses runs of whitespace, and an empty @fleet-ended would shift @fleet-sock into it
+  while IFS=$'\037' read -r pid entry ended psock; do
     [ -n "$entry" ] || continue
+    # A hop: the pane's entry is gone, but its socket is a live entry's that has no pane yet. Same attach, retag it.
+    if [ -z "${att[$entry]:-}" ] && [ "$ended" != 1 ] && [ -n "$psock" ] && e=${bysock[$psock]:-} && [ -n "$e" ] &&
+      [ -z "${paned[$e]:-}" ]; then
+      tmx set -p -t "$pid" @fleet-entry "$e"
+      tmx set -p -t "$pid" @fleet-title "${newtitle[$e]}"
+      entry=$e
+    fi
     if [ -n "${att[$entry]:-}" ]; then
       if [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"; else paned[$entry]=1; fi
       continue
@@ -203,7 +215,7 @@ sync_layout() {
     if [ -n "$title" ]; then tmx set -p -t "$pid" @fleet-title "$title"   # blocked or stopped
     elif [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"                   # gone, and its attach has ended
     fi
-  done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\t#{@fleet-entry}\t#{@fleet-ended}')
+  done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}')
 
   # A pane for each attachable entry that has none, by host then repo.
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
@@ -217,6 +229,7 @@ sync_layout() {
     fi
     tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
     tmx set -p -t "$pid" @fleet-title "$guest · $branch · $live" 2>/dev/null
+    tmx set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
   done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
 }
 
@@ -225,13 +238,18 @@ sync_layout() {
 # Write <state>/<s>/hint from its fleet.json: `<host> N▶ M⚠` per host, then
 # `↻K` for attachable entries with no pane.
 hint_write() {
-  local s=$1 d k entry tmp
+  local s=$1 d k entry psock ip sock tmp
   d=$(sdir "$s")
   declare -A paned=()
-  while read -r entry; do [ -z "$entry" ] || paned[$entry]=1; done \
-    < <(tmx list-panes -s -t "=$s" -F '#{@fleet-entry}' 2>/dev/null)
+  # A pane counts for its entry and for its socket: after a hop, the next sync retags it with the new entry.
+  while IFS=$'\037' read -r entry psock; do
+    [ -z "$entry" ] || paned[$entry]=1
+    [ -z "$psock" ] || paned["$psock"]=1
+  done < <(tmx list-panes -s -t "=$s" -F $'#{@fleet-entry}\037#{@fleet-sock}' 2>/dev/null)
   k=0
-  while IFS=$'\t' read -r entry _; do [ -n "${paned[$entry]:-}" ] || k=$((k + 1)); done < <(attachable "$d/fleet.json")
+  while IFS=$'\t' read -r entry _ _ ip _ _ _ sock; do
+    [ -n "${paned[$entry]:-}" ] || [ -n "${paned["$ip $sock"]:-}" ] || k=$((k + 1))
+  done < <(attachable "$d/fleet.json")
   tmp=$(mktemp "$d/.hint.XXXXXX") || return 1   # the loop and a sync may write at once
   jq -r --argjson k "$k" '
     group_by(.host) | map(.[0].host as $h

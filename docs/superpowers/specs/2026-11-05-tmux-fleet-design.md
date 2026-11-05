@@ -111,7 +111,7 @@ Session `fleet`, or `fleet-<host>` under `--local`.
   ordered by host then repo; panes tiled.
 - Each attachable row (`continue` starts with `dtach -a`) is one pane: `ssh -t agentvm@<ip>` running the
   `continue` command with `-e '^]'` added, so dtach's detach key is `C-]` and `C-\` stays free. Pane options:
-  `@fleet-entry` (the row's `entry`, its identity across syncs), `@fleet-title`.
+  `@fleet-entry` (the row's `entry`), `@fleet-title`, `@fleet-sock` (`<ip> <sock>`, the dtach it attaches to).
 - Non-attachable rows: a live session in someone's own terminal (`continue` empty), a blocked or stopped run.
   They appear only in the overview.
 
@@ -125,6 +125,8 @@ Session `fleet`, or `fleet-<host>` under `--local`.
 3. For each tagged pane: an attach that has ended (the session ended, or the link was lost: ssh exited 255)
    marks the pane `@fleet-ended` and leaves it with its last screen and a `[fleet] session ended` or `[fleet]
    link lost` line. If its entry is still attachable, an ended pane is killed and replaced with a fresh attach;
+   if its entry is gone but its `@fleet-sock` is a live entry's with no pane (a hop: `chain.sh` runs every hop of
+   a chain in one dtach, each a new entry), a live pane is retagged with that entry and retitled, not replaced;
    if its entry is now blocked or stopped, the pane stays and its title is set to the new state; if its entry is
    gone (or its guest unreachable this time), an ended pane is killed and a live one kept. A resurrect restore
    never reaches this step: `fleet` rebuilds a restored session (Clarification 3), and saves leave fleet's
@@ -231,3 +233,8 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `<host>·<repo>` windows in it. `tmux.conf` sets `@resurrect-hook-post-save-layout` to a `sed` that deletes the
    `pane` and `window` lines of sessions `fleet` and `fleet-*` from the save file (resurrect appends the file's
    path; field 2 is the session). Rewritten in *Sync* and *Plugins, keys, theme*.
+7. **A pane follows its socket across hops** (decisions 7, 8) — `folded`. Keyed by entry alone, a sync after a hop
+   (new entry, same dtach) added a second pane on the same socket and left the old one attached forever. Panes now
+   carry `@fleet-sock`; sync retags a live pane whose entry is gone onto the live entry on its socket, and the hint
+   counts a socket with a pane as paned. Panes made before this change have no `@fleet-sock`, so each gets one
+   duplicate on its first hop. Rewritten in *Layout* and *Sync*.
