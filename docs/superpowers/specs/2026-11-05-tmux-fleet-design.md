@@ -32,13 +32,13 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 3 | nixed drops `programs.tmux` (it writes its own `tmux.conf`, which would clash with the link): `tmux`, `jq`, `fzf` go in `home.packages`; `tmux.conf` and `fleet` are `mkOutOfStoreSymlink`s into `~/repos/dotfiles`; `plugins.tmux` is generated with one `run-shell` per plugin from `pkgs.tmuxPlugins` | *Where things live* | In the VM: `grep -n 'programs.tmux' modules/home.nix` prints nothing. On `nixos` after switch: `readlink ~/.config/tmux/tmux.conf` points into `~/repos/dotfiles`; `grep -c '^run-shell' ~/.config/tmux/plugins.tmux` prints `6`; `tmux list-keys \| grep -E 'sessionx\|extrakto'` shows both |
 | 4 | `fleet` discovers hosts from `~/.config/fleet/hosts` and each host's guests from `ssh theo@<host> cat /etc/agentvm/projects.json`; `--local` reads this machine's file and no hosts list | *Discovery* | bats: with a stub `ssh` serving two hosts' `projects.json`, `fleet ls` prints one line per guest with its host; with `--local` and `AGENTVM_PROJECTS=<fixture>`, only that file's guests |
 | 5 | Each guest's sessions come from the `status.sh` and `AGENT_SUPERVISE_REPOS` its `agent-supervise` user unit names (`systemctl --user show -p ExecStart -p Environment`); a guest without the unit is shown as `no supervisor` | *Discovery* | bats: the stub returns a unit with `ExecStart=/workspace/agent-methodology/shared/claude/supervise.sh`; `fleet` runs `…/status.sh --json` with that `AGENT_SUPERVISE_REPOS`; a stub with no unit gives the `no supervisor` line and exit 0 |
-| 6 | Session `fleet` (`fleet-<host>` under `--local`): window 1 `overview` with one pane per guest, refreshing `fleet status <guest>` every 30 s; then one window per repo that has at least one attachable session, named for the repo and tagged with its host (Clarification 10) | *Layout* | bats on `tmux -L fleet-test`: from the fixtures, `list-windows -F '#W|#{@fleet-host}'` prints `overview|`, `nixed|nixos`, `agent-methodology|thinkcentre` in that order; `overview` has one pane per guest |
+| 6 | Session `fleet` (`fleet-<host>` under `--local`): window 1 `overview` with one pane per guest, refreshing `fleet status <guest>` every 30 s, its border naming the guest and its host (Clarification 11); then one window per repo that has at least one attachable session, named for the repo and tagged with its host (Clarification 10) | *Layout* | bats on `tmux -L fleet-test`: from the fixtures, `list-windows -F '#W|#{@fleet-host}'` prints `overview|`, `nixed|nixos`, `agent-methodology|thinkcentre` in that order; `overview` has one pane per guest |
 | 7 | A session is attachable when its `continue` starts with `dtach -a`; it gets one pane running `ssh -t agentvm@<ip> dtach -a <sock> -e '^]' -r winch`, tagged `@fleet-entry=<entry>` and with its border's `@fleet-glyph`, `@fleet-colour`, `@fleet-branch`, `@fleet-live` (Clarification 10), retagged on each sync; every other row (own terminal, blocked, stopped) is only an overview row | *Layout* | bats: three rows (one `dtach -a`, one empty `continue`, one blocked) give exactly one pane, whose `#{@fleet-entry}` and `#{@fleet-branch}` match the first row (Clarification 1) |
 | 8 | Sync is explicit (`prefix F` or `fleet sync`) and idempotent: it adds a pane for each attachable entry whose socket has none, closes every tagged pane whose attach has exited and every second pane on one socket, retags a live one whose entry is now blocked or stopped, never touches an untagged pane, and prints what it did | *Sync* | bats: a second sync on unchanged fixtures leaves `list-panes -a -F '#{pane_id}'` identical; adding one entry adds one pane; removing one closes it; an ended pane of a blocked entry is closed; of two live panes on one socket one is left; a pane made by hand in a fleet window survives both; `sync` prints `fleet: synced <s>, nothing to change` or what changed |
 | 9 | One unreachable host or guest never fails a sync: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet sync` exits 0, the other guest's panes exist, and `fleet status <failed>` prints `unreachable` |
 | 10 | The status bar shows `fleet hint` from a cache file a background loop in the session refreshes every 60 s, so the bar never runs ssh: `<host> ●N ◆M  …  ↻K` in tmux styles (● live, ◆ a `kind` or `blocked`, hidden at 0; ↻ attachable entries with no pane, hidden at 0; the host in its tab colour) | *Hint* | bats: fixtures with 2 live, 1 stalled, 1 blocked on `nixos` and one unpaned attachable entry give `nixos ●3 ◆2  thinkcentre ●1  ↻1` with the styles stripped (Clarifications 2, 10); `fleet hint` with no cache prints nothing and exits 0 |
 | 11 | Keys (prefix `C-b`, nothing existing rebound): `F` sync, `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; `C-]` detaches dtach in an agent pane, which closes it and leaves the agent running | *Plugins, keys, theme* | `tmux list-keys -T prefix` shows `F`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged; manual: `C-]` in an agent pane closes it, and the guest's `status.sh` still shows that session `alive` |
-| 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` showing an agent pane's state glyph in its colour, branch and live value (else the pane command); the focused pane's border is blue (Clarification 10) | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell agent panes from their own shells |
+| 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` showing an agent pane's state emoji, branch and live value, an overview pane's guest in its host's colour with its counts (else the pane command); the focused pane's border is blue (Clarifications 10, 11) | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell agent panes from their own shells |
 | 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
 | 14 | `fleet doctor` checks each prerequisite (ssh to each host, ssh to each guest, the tailnet route to each guest subnet, `jq`, `fzf`, `dtach` on the guest) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>` |
 | 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `live`, `state`, `kind`, `entry`, `continue`; a missing field shows `?` and never stops a sync | *Contract consumed* | bats: a fixture row with no `kind` and no `branch` still gets its pane, with `@fleet-branch` `?` |
@@ -106,12 +106,15 @@ error for a guest it can't reach (Clarification 5).
 Session `fleet`, or `fleet-<host>` under `--local`.
 
 - Window 1 `overview`: one pane per guest (tiled), each a loop of `fleet status <guest>` every 30 s: the
-  guest's `status.sh` table, or `unreachable` / `no supervisor`.
+  guest's `status.sh` table, or `unreachable` / `no supervisor`. Its border names the guest in its host's colour,
+  the host, the guest's `●N ◆M` (as the hint's) and its ip and last refresh (pane options `@fleet-guest`,
+  `@fleet-guest-host`, `@fleet-guest-colour`, set by each sync, and `@fleet-summary`, set by the loop; not
+  `@fleet-host`, which as a pane option would shadow the window's) (Clarification 11).
 - One window per host and repo (repo is the basename of the row's `repo`) with at least one attachable row,
   ordered by host then repo; panes tiled. It is named for the repo and tagged `@fleet-host` and
   `@fleet-host-colour` (the host's place among fleet.json's sorted hosts picks it from aqua, orange, blue,
   purple), which the tab is drawn in. A window made before the tags, named `<host>·<repo>`, is renamed and
-  tagged by the next sync.
+  tagged by the next sync, whether or not it adds a pane there (Clarification 11).
 - Each attachable row (`continue` starts with `dtach -a`) is one pane: `ssh -t agentvm@<ip>` running the
   `continue` command with `-e '^]'` added, so dtach's detach key is `C-]` and `C-\` stays free. Pane options:
   `@fleet-entry` (the row's `entry`), `@fleet-glyph` and `@fleet-colour` (its `live` value's, *Plugins, keys,
@@ -139,10 +142,13 @@ Session `fleet`, or `fleet-<host>` under `--local`.
    sessions out (Clarification 6).
 4. Untagged panes and windows with neither `@fleet-host` nor a `<host>·<repo>` name are never touched.
 5. Refresh the hint cache.
+6. Bring forward what an older fleet left running, which a `git pull` does not change (Clarification 11): an overview
+   pane without `@fleet-overview` 2 is respawned with the current loop, and a hint loop whose `hintloop.pid` has
+   no version is replaced. The hint loop runs the fleet on disk for each refresh, so later pulls reach it.
 
 One sync at a time per session (`flock -n` on its `sync.lock`): a second exits 0 and says one is running.
 `prefix F` shows `fleet: syncing…` as it starts, and the line `sync` prints when it ends: `fleet: synced <s>, nothing
-to change`, `fleet: synced <s>: 1 added, 2 closed, 1 followed a hop`, or why it did not run.
+to change`, `fleet: synced <s>: 1 added, 2 closed, 1 followed a hop, 1 renamed`, or why it did not run.
 
 Nothing ever syncs on its own: panes never appear or move while the user types into an agent.
 
@@ -164,20 +170,23 @@ discovery every 60 s and writes the session's `hint` (state directory above), re
 | tmux-continuum | save every 15 min; auto-restore on the laptop only | `@continuum-restore on` in the laptop's `plugins.tmux` only |
 
 Theme: gruvbox dark, set in `tmux.conf` itself, so the status line stays fleet's and the laptop and the hosts look
-the same. `pane-border-status top`; the format shows an agent pane's state herdr-style: a narrow glyph in its
-colour, the branch bold, the `live` value dim (Clarification 10); an overview pane's `@fleet-guest`; any other
-pane's command and directory (Clarification 4). The focused pane's border is blue. fleet picks the glyph:
+the same. `pane-border-status top`; the format shows an agent pane's state: its glyph, the branch bold, the
+`live` value dim (Clarifications 10, 11), or its entry while an older fleet's tags are on it; an overview pane's
+guest (*Layout*); any other pane's command and directory (Clarification 4). The focused pane's border is blue.
+fleet picks the glyph, an emoji, one default-wide code point with no VS16 (Clarification 8), the same as
+agent-methodology's `status.sh` table; the colour is kept in `@fleet-colour`:
 
 | `live` | glyph | colour |
 |---|---|---|
-| alive | `●` | green |
-| waiting | `○` | yellow |
-| stalled | `◐` | yellow |
-| blocked… | `◆` | purple |
-| dead, dead? | `✗` | red |
-| done | `✓` | grey |
-| gone | `∅` | grey |
-| ended, `-`, `?` | `·` | grey |
+| alive | 🟢 | green |
+| waiting | ⏳ | yellow |
+| stalled | 🟡 | yellow |
+| blocked… | ✋ | purple |
+| dead, dead? | 🔴 | red |
+| ended | ⚫ | grey |
+| done | ✅ | grey |
+| gone | 👻 | grey |
+| `-`, `?` | none | grey |
 
 ## Contract consumed
 
@@ -273,7 +282,8 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `done` row can take days; it now closes, the overview still showing the state. `prefix F` had shown nothing at
    the end, so a sync that changed nothing (status.sh can take 13 s on a guest with many blocked rows) looked like
    none ran; it now shows the line `sync` prints. Rewritten in decision 8 and *Sync*.
-10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`. Asked by the user
+10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`; its glyphs
+   `superseded by 11`. Asked by the user
    (2026-11-05): a gruvbox theme, better pane titles, no `·` divider in tab names, and icons like herdr's. herdr
    draws state as one narrow Unicode glyph (`●○◐✓×`) coloured by its theme, not as emoji or Nerd Font icons, so it
    needs no font change; Clarification 8's emoji were double-width and fixed-colour. fleet now tags each agent pane
@@ -283,3 +293,17 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `@fleet-colour`), which tabs and the hint use instead of `<host>·`. catppuccin is dropped for a gruvbox palette
    in `tmux.conf`, matching nvim and doom. agent-methodology's `status.sh` table (its PR #71) is to take the same
    glyphs. Rewritten in decisions 6, 7, 10, 12, *Layout*, *Hint* and *Plugins, keys, theme*.
+11. **Emoji back, overview borders, an update that reaches running fleets** (decisions 6, 7, 8, 12) — `folded`.
+   Reported by the user (2026-11-05) after updating the laptop: "it looks wrong", no glyphs, an agent window's
+   panes with no titles, and the overview's titles unchanged. Reproduced in the VM by starting the pre-10 fleet with
+   catppuccin, then `source-file` of the new config (their `prefix r`) and screenshots of real alacritty: the panes
+   still carried the old tags, which the new border format drew as nothing; sync renamed a `<host>·<repo>` tab only
+   when it added a pane there; the overview panes and the hint loop kept running the old fleet's code (a pull
+   changes the file, not a running process), so the old `== guest` headers and `2▶ 2⚠` hint stayed. Now: the border
+   falls back to the entry, a sync renames every such tab, respawns old overview panes and replaces an old hint
+   loop, and the hint loop calls the fleet on disk. Overview borders take the herdr look (guest in its host's
+   colour, host, `●N ◆M`, ip and time; the `==` header is gone). The user then chose the emoji over the glyphs
+   ("let's use your original approach, i could even change terminal to make it look better"), as
+   agent-methodology's `status.sh` table now does; the hint keeps `●`/`◆`. Truecolor was a suspect too: tmux 3.8
+   with a current alacritty finds it by asking the terminal, and `terminal-features ",alacritty*:RGB"` covers an
+   older pair. Rewritten in decisions 6, 7, 8, 12, *Layout*, *Sync* and *Plugins, keys, theme*.

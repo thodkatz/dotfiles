@@ -113,8 +113,8 @@ wait_attached() {
   run entries
   [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-stall' ]
   run tags
-  [[ "$output" == *'e-nixed-1|● #b8bb26 main alive'* ]]
-  [[ "$output" == *'e-am-1|● #b8bb26 ? alive'* ]]
+  [[ "$output" == *'e-nixed-1|🟢 #b8bb26 main alive'* ]]
+  [[ "$output" == *'e-am-1|🟢 #b8bb26 ? alive'* ]]
   wait_attached e-nixed-1
   grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
 }
@@ -155,7 +155,7 @@ wait_attached() {
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" sync -t fleet
   run tags
-  [[ "$output" == *'e-nixed-stall|◆ #d3869b impl/x blocked #9'* ]]
+  [[ "$output" == *'e-nixed-stall|✋ #d3869b impl/x blocked #9'* ]]
 }
 
 @test "sync: an ended pane of a still-attachable entry is replaced (D8)" {
@@ -184,7 +184,7 @@ wait_attached() {
   "$FLEET" sync -t fleet
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
   run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
-  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
+  [[ "$output" == *"$old|e-nixed-1b|🟢 impl/z alive"* ]]
   [[ "$output" != *'|e-nixed-1|'* ]]
 }
 
@@ -242,10 +242,40 @@ wait_attached() {
   [[ "$(t list-panes -t "$wid" -F '#{@fleet-entry}')" == *e-nixed-2* ]]
 }
 
+@test "sync: such a window is renamed even when the sync adds no pane to it, and says so" {
+  "$FLEET" up
+  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed" { print $1 }')
+  t rename-window -t "$wid" 'nixos·nixed' \; set -wu -t "$wid" @fleet-host \; set -wu -t "$wid" @fleet-host-colour
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet: 1 renamed' ]
+  [[ "$(t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}')" == *"$wid|nixed|nixos|#8ec07c"* ]]
+}
+
+@test "sync: overview panes carry their guest's host and its colour, also ones made before the tags" {
+  "$FLEET" up
+  t list-panes -t =fleet:overview -F '#{pane_id}' | while read -r p; do t set -pu -t "$p" @fleet-guest-host \; set -pu -t "$p" @fleet-guest-colour; done
+  "$FLEET" sync -t fleet
+  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-guest-host}|#{@fleet-guest-colour}'
+  [[ "$output" == *"agentvm-repos|nixos|#8ec07c"* ]]
+  [[ "$output" == *"agentvm-thinkrepos|thinkcentre|#fe8019"* ]]
+}
+
+@test "sync: an overview pane an older fleet started is restarted, a current one is left running" {
+  "$FLEET" up
+  old=$(t list-panes -t =fleet:overview -F '#{pane_id}' | head -1)
+  cur=$(t list-panes -t =fleet:overview -F '#{pane_id}' | tail -1)
+  t set -pu -t "$old" @fleet-overview
+  pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
+  "$FLEET" sync -t fleet
+  [ "$(t display -p -t "$old" '#{pane_pid}')" != "$pold" ]
+  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 2 ]
+  [ "$(t display -p -t "$cur" '#{pane_pid}')" = "$pcur" ]
+}
+
 @test "sync: a pane's glyph and colour follow its live value, refreshed on every sync" {
   "$FLEET" up
-  for pair in 'alive:● #b8bb26' 'waiting:○ #fabd2f' 'stalled:◐ #fabd2f' 'blocked #3:◆ #d3869b' 'dead:✗ #fb4934' \
-    'dead?:✗ #fb4934' 'ended:· #928374' 'done:✓ #928374' 'gone:∅ #928374' '-:· #928374' '?:· #928374'; do
+  for pair in 'alive:🟢 #b8bb26' 'waiting:⏳ #fabd2f' 'stalled:🟡 #fabd2f' 'blocked #3:✋ #d3869b' 'dead:🔴 #fb4934' \
+    'dead?:🔴 #fb4934' 'ended:⚫ #928374' 'done:✅ #928374' 'gone:👻 #928374' '-: #928374' '?: #928374'; do
     live=${pair%:*} look=${pair##*:}
     jq --arg l "$live" 'map(if .entry == "e-nixed-stall" then .live = $l else . end)' \
       "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
@@ -479,4 +509,14 @@ wait_attached() {
   eval "$(cat "$BATS_TEST_TMPDIR/hook") $(printf %q "$save")"
   run cut -f 1,2 "$save"
   [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
+}
+
+@test "sync: replaces a hint loop an older fleet started (its pid file has no version)" {
+  "$FLEET" up
+  sleep 600 & old=$!
+  echo "$old" > "$FLEET_STATE/fleet/hintloop.pid"
+  FLEET_NO_HINTLOOP= "$FLEET" sync -t fleet
+  ! kill -0 "$old" 2>/dev/null
+  for i in $(seq 50); do grep -q ' 2$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
+  grep -q ' 2$' "$FLEET_STATE/fleet/hintloop.pid"
 }

@@ -57,17 +57,19 @@ After pulling changes to `tmux/` (e.g. the gruvbox theme, which dropped catppucc
 cd ~/repos/dotfiles && git pull
 stow -t "$HOME" --dotfiles -R tmux    # links any new file; edits to linked ones are live already
 # in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
-tmux kill-session -t fleet; fleet    # rebuild fleet: its windows and pane borders take the new look
+# and prefix F in the fleet session: its tabs, pane borders, overview and hint take the new look
 
 # Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
 cd ~/repos/dotfiles && git pull
 # a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux:
-# prefix r, and `tmux kill-session -t fleet-$(hostname); fleet --local`
+# prefix r, and prefix F in fleet-<host>
 ```
 
-`prefix r` restyles everything already open except fleet's windows: their names and tags come from `fleet`, so
-rebuild its session as above (a plain `prefix F` refreshes the pane borders, not the window names). If a reload
-leaves stale styling behind, `tmux kill-server` starts clean; resurrect brings your own sessions back.
+`prefix r` restyles everything already open; `prefix F` then brings fleet's session forward: it renames tabs from
+an older fleet (`nixos·nixed` becomes `nixed`), retags agent panes (until it runs, their borders show the bare
+entry id), and restarts the overview panes and the hint loop an older fleet started, since a pull changes the file,
+not the processes already running it. If a reload leaves stale styling behind, `tmux kill-server` starts clean;
+resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
 guests only). Inside: `prefix F` syncs panes with the running sessions, `C-]` detaches from an agent pane, and
@@ -111,11 +113,11 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes show their state on their border, herdr-style (`● impl/x alive`, as of the last sync): `●` alive
-(green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
-`✓` done, `∅` gone (worktree removed), `·` ended early (grey). Your own panes show their command and directory; the
-focused pane's border is blue. The theme is gruvbox, written into `tmux.conf` (no theme plugin), and needs no
-special font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+Agent panes show their state on their border (`🟢 impl/x alive`, as of the last sync): 🟢 alive, ⏳ waiting for a
+usage-limit reset, 🟡 stalled, ✋ blocked on you, 🔴 dead, ⚫ ended early, ✅ done, 👻 gone (worktree removed).
+Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed. Your
+own panes show their command and directory; the focused pane's border is blue. The theme is gruvbox, written into
+`tmux.conf` (no theme plugin); the state icons need an emoji font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).
