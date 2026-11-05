@@ -81,7 +81,9 @@ guests() {
 
 # The script a guest runs (`bash -s -- json|table`): find the agent-supervise
 # user unit's status.sh and AGENT_SUPERVISE_REPOS, then run it. Not `bash -l`:
-# NixOS's /etc/profile resets PATH.
+# NixOS's /etc/profile resets PATH. json (discover) skips the forge calls, most
+# of a run's time, for fields fleet doesn't read; --json comes first, as an older
+# status.sh reads only $1 and ignores the rest.
 probe_script() {
   cat <<'EOF'
 mode=${1:-table}
@@ -101,7 +103,7 @@ envval() {
   printf '%s' "$v"
 }
 status_sh=${path%/*}/status.sh
-AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json)
+AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json --no-forge)
 EOF
 }
 

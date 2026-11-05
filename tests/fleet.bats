@@ -75,10 +75,10 @@ wait_attached() {
   [ "$output" = $'nixos agentvm-repos 192.168.122.51\nthinkcentre - -' ]
 }
 
-@test "probe script runs the unit's status.sh with its AGENT_SUPERVISE_REPOS (D5)" {
+@test "probe script runs the unit's status.sh with its AGENT_SUPERVISE_REPOS, json without the forge (D5)" {
   run bash -c "'$FLEET' _probe-script | bash -s -- json"
   [ "$status" -eq 0 ]
-  [ "$output" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json" ]
+  [ "$output" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json --no-forge" ]
   run bash -c "'$FLEET' _probe-script | bash -s -- table"
   [ "$output" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=" ]
 }
