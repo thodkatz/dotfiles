@@ -1,6 +1,6 @@
 # tmux fleet view: observing agent sessions across hosts
 
-**Status:** draft, awaiting the user's review. **Repos touched:** `dotfiles` (slices 1–2), `nixed` (slice 3).
+**Status:** approved by the user, 2026-11-05. **Repos touched:** `dotfiles` (slices 1–2), `nixed` (slice 3).
 `agent-methodology` is consumed, not changed.
 
 **Who reads it:** the plan's author, each slice's implementer and reviewers, and the user, who approves the
