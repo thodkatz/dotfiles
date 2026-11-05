@@ -113,11 +113,12 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes show their state on their border (`🟢 impl/x alive`, as of the last sync): 🟢 alive, ⏳ waiting for a
-usage-limit reset, 🟡 stalled, ✋ blocked on you, 🔴 dead, ⚫ ended early, ✅ done, 👻 gone (worktree removed).
+Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last sync): `●` alive
+(green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
+`✓` done, `∅` gone (worktree removed), `·` ended early (grey).
 Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed. Your
 own panes show their command and directory; the focused pane's border is blue. The theme is gruvbox, written into
-`tmux.conf` (no theme plugin); the state icons need an emoji font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+`tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).

@@ -179,14 +179,14 @@ target_session() {
   return 1
 }
 
-# An agent's state by its live value: an emoji (one code point, no VS16, so
-# tmux's borders stay aligned) and a gruvbox colour. agent-methodology's
-# status.sh table uses the same emoji.
+# An agent's state by its live value: one narrow glyph and its gruvbox colour,
+# which tmux draws, so it shows in colour with any font. agent-methodology's
+# status.sh table uses the same glyphs.
 live_look() {
   case $1 in
-    alive) echo '🟢 #b8bb26' ;; waiting) echo '⏳ #fabd2f' ;; stalled) echo '🟡 #fabd2f' ;;
-    blocked*) echo '✋ #d3869b' ;; dead*) echo '🔴 #fb4934' ;; ended) echo '⚫ #928374' ;;
-    done) echo '✅ #928374' ;; gone) echo '👻 #928374' ;; *) echo ' #928374' ;;   # - and ?: no glyph
+    alive) echo '● #b8bb26' ;; waiting) echo '○ #fabd2f' ;; stalled) echo '◐ #fabd2f' ;;
+    blocked*) echo '◆ #d3869b' ;; dead*) echo '✗ #fb4934' ;; done) echo '✓ #928374' ;;
+    gone) echo '∅ #928374' ;; *) echo '· #928374' ;;   # ended, - and ?
   esac
 }
 

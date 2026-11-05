@@ -172,23 +172,22 @@ discovery every 60 s and writes the session's `hint` (state directory above), re
 | tmux-continuum | save every 15 min; auto-restore on the laptop only | `@continuum-restore on` in the laptop's `plugins.tmux` only |
 
 Theme: gruvbox dark, set in `tmux.conf` itself, so the status line stays fleet's and the laptop and the hosts look
-the same. `pane-border-status top`; the format shows an agent pane's state: its glyph, the branch bold, the
-`live` value dim (Clarifications 10, 11), or its entry while an older fleet's tags are on it; an overview pane's
+the same. `pane-border-status top`; the format shows an agent pane's state: its glyph, the branch bold (left out
+when `?`), the `live` value dim, then its window's host in its colour (Clarifications 10, 11), or its entry while an older fleet's tags are on it; an overview pane's
 guest (*Layout*); any other pane's command and directory (Clarification 4). The focused pane's border is blue.
-fleet picks the glyph, an emoji, one default-wide code point with no VS16 (Clarification 8), the same as
-agent-methodology's `status.sh` table; the colour is kept in `@fleet-colour`:
+fleet picks the glyph, one narrow character tmux draws in its colour, so it shows in colour with any font
+(Clarification 11), the same as agent-methodology's `status.sh` table:
 
 | `live` | glyph | colour |
 |---|---|---|
-| alive | 🟢 | green |
-| waiting | ⏳ | yellow |
-| stalled | 🟡 | yellow |
-| blocked… | ✋ | purple |
-| dead, dead? | 🔴 | red |
-| ended | ⚫ | grey |
-| done | ✅ | grey |
-| gone | 👻 | grey |
-| `-`, `?` | none | grey |
+| alive | `●` | green |
+| waiting | `○` | yellow |
+| stalled | `◐` | yellow |
+| blocked… | `◆` | purple |
+| dead, dead? | `✗` | red |
+| done | `✓` | grey |
+| gone | `∅` | grey |
+| ended, `-`, `?` | `·` | grey |
 
 ## Contract consumed
 
@@ -284,8 +283,7 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `done` row can take days; it now closes, the overview still showing the state. `prefix F` had shown nothing at
    the end, so a sync that changed nothing (status.sh can take 13 s on a guest with many blocked rows) looked like
    none ran; it now shows the line `sync` prints. Rewritten in decision 8 and *Sync*.
-10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`; its glyphs
-   `superseded by 11`. Asked by the user
+10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`. Asked by the user
    (2026-11-05): a gruvbox theme, better pane titles, no `·` divider in tab names, and icons like herdr's. herdr
    draws state as one narrow Unicode glyph (`●○◐✓×`) coloured by its theme, not as emoji or Nerd Font icons, so it
    needs no font change; Clarification 8's emoji were double-width and fixed-colour. fleet now tags each agent pane
@@ -308,7 +306,12 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    ("let's use your original approach, i could even change terminal to make it look better"), as
    agent-methodology's `status.sh` table now does; the hint keeps `●`/`◆`. Truecolor was a suspect too: tmux 3.8
    with a current alacritty finds it by asking the terminal, and `terminal-features ",alacritty*:RGB"` covers an
-   older pair. Rewritten in decisions 6, 7, 8, 12, *Layout*, *Sync* and *Plugins, keys, theme*.
+   older pair. Then (same day) the user found no sign of which host an agent pane runs on, and a gap in the
+   agent-methodology border, which was its `?` branch: the border now ends with the host in its colour and leaves
+   a `?` branch out (`@fleet-branch` keeps it, decision 15). And the emoji showed without colour on the laptop:
+   colour emoji come from the font, which fontconfig's fallback picks, not tmux. The user chose the glyphs again
+   (tmux colours them, any font), so the emoji above lasted one day. Rewritten in decisions 6, 7, 8, 12, *Layout*, *Sync*
+   and *Plugins, keys, theme*.
 12. **Discover skips the forge** (decision 5) — `folded`. Reported by the user (2026-11-05): prefix F was slow.
    `status.sh --json` spent most of its time on forge calls one after another (13 s in all on agentvm-repos);
    agent-methodology #72 runs them at once and adds `--no-forge`, which discover now passes (the user: "let's do

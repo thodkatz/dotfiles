@@ -113,8 +113,8 @@ wait_attached() {
   run entries
   [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-stall' ]
   run tags
-  [[ "$output" == *'e-nixed-1|🟢 #b8bb26 main alive'* ]]
-  [[ "$output" == *'e-am-1|🟢 #b8bb26 ? alive'* ]]
+  [[ "$output" == *'e-nixed-1|● #b8bb26 main alive'* ]]
+  [[ "$output" == *'e-am-1|● #b8bb26 ? alive'* ]]
   wait_attached e-nixed-1
   grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
 }
@@ -155,7 +155,7 @@ wait_attached() {
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" sync -t fleet
   run tags
-  [[ "$output" == *'e-nixed-stall|✋ #d3869b impl/x blocked #9'* ]]
+  [[ "$output" == *'e-nixed-stall|◆ #d3869b impl/x blocked #9'* ]]
 }
 
 @test "sync: an ended pane of a still-attachable entry is replaced (D8)" {
@@ -184,7 +184,7 @@ wait_attached() {
   "$FLEET" sync -t fleet
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
   run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
-  [[ "$output" == *"$old|e-nixed-1b|🟢 impl/z alive"* ]]
+  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
   [[ "$output" != *'|e-nixed-1|'* ]]
 }
 
@@ -274,8 +274,8 @@ wait_attached() {
 
 @test "sync: a pane's glyph and colour follow its live value, refreshed on every sync" {
   "$FLEET" up
-  for pair in 'alive:🟢 #b8bb26' 'waiting:⏳ #fabd2f' 'stalled:🟡 #fabd2f' 'blocked #3:✋ #d3869b' 'dead:🔴 #fb4934' \
-    'dead?:🔴 #fb4934' 'ended:⚫ #928374' 'done:✅ #928374' 'gone:👻 #928374' '-: #928374' '?: #928374'; do
+  for pair in 'alive:● #b8bb26' 'waiting:○ #fabd2f' 'stalled:◐ #fabd2f' 'blocked #3:◆ #d3869b' 'dead:✗ #fb4934' \
+    'dead?:✗ #fb4934' 'ended:· #928374' 'done:✓ #928374' 'gone:∅ #928374' '-:· #928374' '?:· #928374'; do
     live=${pair%:*} look=${pair##*:}
     jq --arg l "$live" 'map(if .entry == "e-nixed-stall" then .live = $l else . end)' \
       "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
