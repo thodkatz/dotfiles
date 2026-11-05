@@ -197,6 +197,14 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
 - **Read-only agent panes**: rejected for now in favour of interactive attach with distinct borders.
 - **Overview when every host is down**: its first pane is a `-` guest with nothing useful in it; show one line
   saying no host answered instead.
+- **Caps on panes and windows** (asked by the user after the first laptop run): today nothing limits either. A
+  `host·repo` window takes every attachable session, re-tiled on each sync, until tmux refuses the split (`no
+  space for new pane`, at panes 1–2 rows tall), and only then does `sync_layout` open a second window under the
+  same name. Wanted: a per-window pane cap (an option such as `@fleet-max-panes`, around 4–6) past which
+  sync opens `host·repo 2`, … counted at add time so a sync never moves existing panes; and a cap on the
+  number of agent windows, showing only the most recent sessions (the rest stay in the overview, and the hint
+  says how many are hidden). "Most recent" needs a time per entry, which none of the consumed `status.sh --json`
+  fields (decision 15) carries: find one in `status.sh` or add it in agent-methodology first.
 
 ## Clarifications
 
