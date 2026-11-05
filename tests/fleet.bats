@@ -28,6 +28,11 @@ add_row() { jq --argjson r "$2" '. + [$r]' "$FLEET_FIXTURES/guest-$1.json" > "$F
 drop_row() { jq --arg e "$2" 'map(select(.entry != $e))' "$FLEET_FIXTURES/guest-$1.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-$1.json"; }
 NEW_ROW='{"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "impl/y", "live": "alive", "state": "running", "kind": "", "entry": "e-nixed-2", "continue": "dtach -a /var/tmp/agent-sessions/e-nixed-2.sock -r winch"}'
 
+# An agent pane's tags for its border: entry|glyph colour branch live.
+tags() { t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-glyph} #{@fleet-colour} #{@fleet-branch} #{@fleet-live}'; }
+# The hint without its tmux styles.
+plain() { sed 's/#\[[^]]*\]//g'; }
+
 entries() { t list-panes -s -t =fleet -F '#{@fleet-entry}' | grep . | sort; }
 
 # Poll up to 5 s until every agent pane has @fleet-ended set.
@@ -94,11 +99,11 @@ wait_attached() {
   [ "$output" = "table of 192.168.122.51" ]
 }
 
-@test "up: overview, then one window per host·repo in order (D6)" {
+@test "up: overview, then one window per repo, tagged with its host, in order (D6)" {
   run "$FLEET" up
   [ "$status" -eq 0 ]
-  run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\nnixos·nixed\nthinkcentre·agent-methodology' ]
+  run t list-windows -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}'
+  [ "$output" = $'overview||\nnixed|nixos|#8ec07c\nagent-methodology|thinkcentre|#fe8019' ]
   run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
   [ "$output" = $'agentvm-repos\nagentvm-thinkrepos' ]
 }
@@ -107,9 +112,9 @@ wait_attached() {
   "$FLEET" up
   run entries
   [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-stall' ]
-  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
-  [[ "$output" == *'e-nixed-1|🟢 agentvm-repos · main · alive'* ]]
-  [[ "$output" == *'e-am-1|🟢 agentvm-thinkrepos · ? · alive'* ]]
+  run tags
+  [[ "$output" == *'e-nixed-1|● #b8bb26 main alive'* ]]
+  [[ "$output" == *'e-am-1|● #b8bb26 ? alive'* ]]
   wait_attached e-nixed-1
   grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
 }
@@ -138,7 +143,7 @@ wait_attached() {
   jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" sync -t fleet
-  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
+  run tags
   [[ "$output" != *'e-nixed-1|'* ]]
   [[ "$output" != *'e-nixed-stall|'* ]]
 }
@@ -149,8 +154,8 @@ wait_attached() {
   jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" sync -t fleet
-  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
-  [[ "$output" == *'e-nixed-stall|✋ agentvm-repos · impl/x · blocked #9'* ]]
+  run tags
+  [[ "$output" == *'e-nixed-stall|◆ #d3869b impl/x blocked #9'* ]]
 }
 
 @test "sync: an ended pane of a still-attachable entry is replaced (D8)" {
@@ -178,8 +183,8 @@ wait_attached() {
   [[ "$output" != *'↻'* ]]
   "$FLEET" sync -t fleet
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-title}'
-  [[ "$output" == *"$old|e-nixed-1b|🟢 agentvm-repos · impl/z · alive"* ]]
+  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
+  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
   [[ "$output" != *'|e-nixed-1|'* ]]
 }
 
@@ -225,15 +230,28 @@ wait_attached() {
   [ "$output" = 'fleet: synced fleet: 1 added' ]
 }
 
-@test "sync: a title's icon follows its live value, refreshed on every sync" {
+@test "sync: a window made before the host tags (<host>·<repo>) is reused, renamed and tagged" {
   "$FLEET" up
-  for pair in alive:🟢 waiting:⏳ stalled:🟡 'blocked #3:✋' dead:🔴 'dead?:🔴' ended:⚫ done:✅ gone:👻 '-:' '?:'; do
-    live=${pair%:*} icon=${pair##*:}
+  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed" { print $1 }')
+  t rename-window -t "$wid" 'nixos·nixed' \; set -wu -t "$wid" @fleet-host \; set -wu -t "$wid" @fleet-host-colour
+  add_row 192.168.122.51 "$NEW_ROW"
+  "$FLEET" sync -t fleet
+  run t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}'
+  [[ "$output" == *"$wid|nixed|nixos|#8ec07c"* ]]
+  [ "$(grep -c nixed <<<"$output")" -eq 1 ]
+  [[ "$(t list-panes -t "$wid" -F '#{@fleet-entry}')" == *e-nixed-2* ]]
+}
+
+@test "sync: a pane's glyph and colour follow its live value, refreshed on every sync" {
+  "$FLEET" up
+  for pair in 'alive:● #b8bb26' 'waiting:○ #fabd2f' 'stalled:◐ #fabd2f' 'blocked #3:◆ #d3869b' 'dead:✗ #fb4934' \
+    'dead?:✗ #fb4934' 'ended:· #928374' 'done:✓ #928374' 'gone:∅ #928374' '-:· #928374' '?:· #928374'; do
+    live=${pair%:*} look=${pair##*:}
     jq --arg l "$live" 'map(if .entry == "e-nixed-stall" then .live = $l else . end)' \
       "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
     "$FLEET" sync -t fleet
-    run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
-    [[ "$output" == *"e-nixed-stall|${icon:+$icon }agentvm-repos · impl/x · $live"* ]] || { echo "$live: $output"; false; }
+    run tags
+    [[ "$output" == *"e-nixed-stall|$look impl/x $live"* ]] || { echo "$live: $output"; false; }
   done
 }
 
@@ -264,7 +282,7 @@ wait_attached() {
   ! t list-windows -t =fleet -F '#W' | grep -qx mine
   [ "$(t show -gv @fleet-booted-fleet)" = 1 ]
   run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\nnixos·nixed\nthinkcentre·agent-methodology' ]
+  [ "$output" = $'overview\nnixed\nagent-methodology' ]
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -272,7 +290,7 @@ wait_attached() {
   run "$FLEET" --local up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet-nixos -F '#W'
-  [ "$output" = $'overview\nnixos·nixed' ]
+  [ "$output" = $'overview\nnixed' ]
   [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
   run "$FLEET" sync -t fleet-nixos
   [ "$status" -eq 0 ]
@@ -298,9 +316,9 @@ wait_attached() {
   add_row 192.168.122.51 "$NEW_ROW"
   run "$FLEET" hint -t fleet --refresh
   [ "$status" -eq 0 ]
-  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠ · ↻1" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1  ↻1" ]
   run "$FLEET" hint -t fleet
-  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠ · ↻1" ]
+  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●3#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default]  #[fg=#928374]↻1#[default]" ]
 }
 
 @test "hint: an unreachable host shows ✗; no cache prints nothing (D10)" {
@@ -310,7 +328,7 @@ wait_attached() {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
   "$FLEET" up
   run "$FLEET" hint -t fleet
-  [ "$output" = "nixos 2▶ 2⚠ · thinkcentre ✗" ]
+  [ "$(plain <<<"$output")" = "nixos ●2 ◆2  thinkcentre ✗" ]
 }
 
 @test "sync and hint from a session fleet did not make act on fleet's (prefix F anywhere)" {
@@ -322,7 +340,7 @@ wait_attached() {
   [[ "$(entries)" == *e-nixed-2* ]]
   [ "$(t list-panes -t =mine -F x | wc -l)" -eq 1 ]
   run "$FLEET" hint -t mine
-  [ "$output" = "nixos 3▶ 2⚠ · thinkcentre 1▶ 0⚠" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1" ]
 }
 
 @test "hint: a foreign session under --local falls back to fleet-<host>, not fleet (D6, D10)" {
@@ -331,7 +349,7 @@ wait_attached() {
   t new-session -d -s mine 'sleep 600'
   run "$FLEET" hint -t mine
   [ "$status" -eq 0 ]
-  [ "$output" = "nixos 2▶ 2⚠" ]
+  [ "$(plain <<<"$output")" = "nixos ●2 ◆2" ]
 }
 
 @test "doctor: names the guest whose ssh fails, exits 1 (D14)" {

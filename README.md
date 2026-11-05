@@ -51,7 +51,7 @@ session (below).
 ### fleet: every agent session in one tmux session
 
 `fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
-supervisor table (`status.sh`, refreshed every 30 s), then one window per `<host>·<repo>` with one pane per agent
+supervisor table (`status.sh`, refreshed every 30 s), then one window per repo (its tab coloured for its host) with one pane per agent
 session running under dtach, attached over ssh. The hosts are in `~/.config/fleet/hosts` (one ssh destination
 per line, from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
 
@@ -83,12 +83,14 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
 | `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; nothing syncs on its own |
 | `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
-| status bar `nixos 3▶ 2⚠ · ↻1` | per host: live sessions, sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
+| status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes have an orange title on their border (`<icon> <guest> · <branch> · <state>`, as of the last sync);
-your own panes show their command. The icon: 🟢 alive, ⏳ waiting for a usage-limit reset, 🟡 stalled, ✋ blocked on
-you, 🔴 dead, ⚫ ended early, ✅ done, 👻 gone (worktree removed). After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+Agent panes show their state on their border, herdr-style (`● impl/x alive`, as of the last sync): `●` alive
+(green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
+`✓` done, `∅` gone (worktree removed), `·` ended early (grey). Your own panes show their command and directory; the
+focused pane's border is blue. The theme is gruvbox, written into `tmux.conf` (no theme plugin), and needs no
+special font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).

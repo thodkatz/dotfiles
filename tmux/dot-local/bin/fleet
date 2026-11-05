@@ -2,7 +2,8 @@
 # fleet: one tmux session showing every agent session on the microVM guests of
 # the hosts in ~/.config/fleet/hosts (or, with --local, of this host alone).
 # Window `overview` has one pane per guest running its supervisor's status.sh;
-# then one window per <host>·<repo> with one interactive pane per session
+# then one window per repo (named for it, coloured for its host) with one
+# interactive pane per session
 # running under dtach. Syncs only when asked (prefix F, `fleet sync`).
 # Design: docs/superpowers/specs/2026-11-05-tmux-fleet-design.md in dotfiles.
 set -uo pipefail
@@ -176,19 +177,37 @@ target_session() {
   return 1
 }
 
-# An agent pane's title: `<icon> <guest> · <branch> · <live>`, the icon from
-# live_icon. agent-methodology's status.sh table uses the same icons.
-live_icon() {
+# An agent's state as herdr shows it: one narrow glyph, coloured (gruvbox), by
+# its live value. agent-methodology's status.sh table uses the same glyphs.
+live_look() {
   case $1 in
-    alive) echo 🟢 ;; waiting) echo ⏳ ;; stalled) echo 🟡 ;; blocked*) echo ✋ ;;
-    dead*) echo 🔴 ;; ended) echo ⚫ ;; done) echo ✅ ;; gone) echo 👻 ;;
+    alive) echo '● #b8bb26' ;; waiting) echo '○ #fabd2f' ;; stalled) echo '◐ #fabd2f' ;;
+    blocked*) echo '◆ #d3869b' ;; dead*) echo '✗ #fb4934' ;; done) echo '✓ #928374' ;;
+    gone) echo '∅ #928374' ;; *) echo '· #928374' ;;   # ended, - and ?
   esac
 }
-pane_title() { local i; i=$(live_icon "$3"); echo "${i:+$i }$1 · $2 · $3"; }
+
+# A host's colour, by its place in fleet.json's sorted hosts: the tab colour
+# of its windows and of its name in the hint.
+HOST_COLOURS=('#8ec07c' '#fe8019' '#83a598' '#d3869b')
+host_colours() {
+  local h n
+  while IFS=$'\t' read -r h n; do
+    printf '%s\t%s\n' "$h" "${HOST_COLOURS[n % ${#HOST_COLOURS[@]}]}"
+  done < <(jq -r 'map(.host) | unique | to_entries[] | "\(.value)\t\(.key)"' "$1")
+}
+
+# Tag an agent pane for tmux.conf's pane-border-format: its live state's glyph
+# and colour, its branch and its live value.
+tag_pane() {
+  local look; look=$(live_look "$3")
+  tmx set -p -t "$1" @fleet-glyph "${look% *}" \; set -p -t "$1" @fleet-colour "${look#* }" \; \
+    set -p -t "$1" @fleet-branch "$2" \; set -p -t "$1" @fleet-live "$3" 2>/dev/null
+}
 
 # Lay the session out from its fleet.json; see the spec's *Sync*.
 sync_layout() {
-  local s=$1 d json g pid entry ended psock cmd e host guest ip repo branch live sock title w wid have
+  local s=$1 d json g pid entry ended psock cmd e host guest ip repo branch live sock row wid have h n
   d=$(sdir "$s"); json=$d/fleet.json
   # Overview: one pane per guest.
   have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
@@ -202,10 +221,11 @@ sync_layout() {
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
   # socket has one pane: a second would mirror the first, scrolling included.
-  declare -A att=() paned=() bysock=() sockpaned=() newtitle=()
+  declare -A att=() paned=() bysock=() sockpaned=() newrow=() hcol=()
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
-    att[$entry]=1 bysock["$ip $sock"]=$entry newtitle[$entry]=$(pane_title "$guest" "$branch" "$live")
+    att[$entry]=1 bysock["$ip $sock"]=$entry newrow[$entry]=$branch$'\t'$live
   done < <(attachable "$json")
+  while IFS=$'\t' read -r h n; do hcol[$h]=$n; done < <(host_colours "$json")
   SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RETAGGED=0
   # Tagged agent panes.
   # \037, not a tab: read collapses runs of whitespace, and an empty @fleet-ended would shift @fleet-sock into it
@@ -233,16 +253,15 @@ sync_layout() {
       if [ -n "${paned[$entry]:-}" ] || { [ -n "$psock" ] && [ -n "${sockpaned[$psock]:-}" ]; }; then
         tmx kill-pane -t "$pid"; SYNC_CLOSED=$((SYNC_CLOSED + 1)); continue   # a second pane on one dtach
       fi
-      # Still attachable: refresh the title, its live (and icon) may have changed since the last sync.
+      # Still attachable: refresh its tags, its live (and glyph) may have changed since the last sync.
       paned[$entry]=1; [ -z "$psock" ] || sockpaned[$psock]=1
-      tmx set -p -t "$pid" @fleet-title "${newtitle[$entry]}"
+      tag_pane "$pid" "${newrow[$entry]%%$'\t'*}" "${newrow[$entry]#*$'\t'}"
       continue
     fi
-    title=$(jq -r --arg e "$entry" 'def q: if . == null or . == "" then "?" else tostring end;
-      first(.[] | .guest as $g | .rows[]? | select(.entry == $e) | [$g, (.branch | q), (.live | q)] | join("\t")) // empty' "$json")
-    if [ -n "$title" ]; then                                              # a live attach, now blocked or stopped
-      IFS=$'\t' read -r guest branch live <<<"$title"
-      tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")"
+    row=$(jq -r --arg e "$entry" 'def q: if . == null or . == "" then "?" else tostring end;
+      first(.[] | .rows[]? | select(.entry == $e) | [(.branch | q), (.live | q)] | join("\t")) // empty' "$json")
+    if [ -n "$row" ]; then                                                # a live attach, now blocked or stopped
+      tag_pane "$pid" "${row%%$'\t'*}" "${row#*$'\t'}"
     fi
   done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}\037#{pane_start_command}')
 
@@ -250,24 +269,33 @@ sync_layout() {
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
     [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
     sockpaned["$ip $sock"]=1
-    w="$host·$repo" pid=''
-    wid=$(tmx list-windows -t "=$s" -F $'#{window_id}\t#{window_name}' | awk -F '\t' -v n="$w" '$2 == n { id = $1 } END { print id }')
+    pid=''
+    # Its window: tagged with its host and named for its repo, or one made before the tags, named <host>·<repo>.
+    wid=$(tmx list-windows -t "=$s" -F $'#{window_id}\t#{@fleet-host}\t#{window_name}' |
+      awk -F '\t' -v h="$host" -v r="$repo" '($2 == h && $3 == r) || ($2 == "" && $3 == h "·" r) { id = $1 } END { print id }')
+    if [ -n "$wid" ] && [ "$(tmx display -p -t "$wid" '#{@fleet-host}')" != "$host" ]; then
+      tmx rename-window -t "$wid" "$repo" \; set -w -t "$wid" @fleet-host "$host" \; \
+        set -w -t "$wid" @fleet-host-colour "${hcol[$host]:-}"
+    fi
     if [ -n "$wid" ] && pid=$(tmx split-window -d -t "$wid" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")" 2>/dev/null); then
       tmx select-layout -t "$wid" tiled >/dev/null
     else
-      pid=$(tmx new-window -d -t "=$s:" -n "$w" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
+      pid=$(tmx new-window -d -t "=$s:" -n "$repo" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
+      tmx set -w -t "$pid" @fleet-host "$host" \; set -w -t "$pid" @fleet-host-colour "${hcol[$host]:-}"
     fi
     SYNC_ADDED=$((SYNC_ADDED + 1))
     tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
-    tmx set -p -t "$pid" @fleet-title "$(pane_title "$guest" "$branch" "$live")" 2>/dev/null
+    tag_pane "$pid" "$branch" "$live"
     tmx set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
   done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
 }
 
 # --- hint ----------------------------------------------------------------
 
-# Write <state>/<s>/hint from its fleet.json: `<host> N▶ M⚠` per host, then
-# `↻K` for attachable entries with no pane.
+# Write <state>/<s>/hint from its fleet.json, in tmux styles for status-right:
+# per host its name in its colour, `●N` live sessions and `◆M` sessions needing
+# you (stalled or blocked; left out at 0) or `✗` when unreachable, then `↻K`
+# for attachable entries with no pane.
 hint_write() {
   local s=$1 d k entry psock ip sock tmp
   d=$(sdir "$s")
@@ -282,13 +310,15 @@ hint_write() {
     [ -n "${paned[$entry]:-}" ] || [ -n "${paned["$ip $sock"]:-}" ] || k=$((k + 1))
   done < <(attachable "$d/fleet.json")
   tmp=$(mktemp "$d/.hint.XXXXXX") || return 1   # the loop and a sync may write at once
-  jq -r --argjson k "$k" '
-    group_by(.host) | map(.[0].host as $h
-      | if all(.[]; .status != "ok") then "\($h) ✗"
+  jq -r --argjson k "$k" --argjson c "$(host_colours "$d/fleet.json" | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')" '
+    group_by(.host) | map(.[0].host as $h | "#[fg=\($c[$h] // "default")]\($h)#[default] "
+      + if all(.[]; .status != "ok") then "#[fg=#fb4934]✗#[default]"
         else [.[] | select(.status == "ok") | .rows[]] as $r
-          | "\($h) \([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)▶ \([$r[] | select((.kind // "") != "" or .state == "blocked")] | length)⚠"
+          | ([$r[] | select((.kind // "") != "" or .state == "blocked")] | length) as $m
+          | "#[fg=#b8bb26]●\([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)#[default]"
+            + if $m > 0 then " #[fg=#d3869b]◆\($m)#[default]" else "" end
         end)
-    | join(" · ") + (if $k > 0 then " · ↻\($k)" else "" end)' "$d/fleet.json" > "$tmp" && mv -f "$tmp" "$d/hint"
+    | join("  ") + (if $k > 0 then "  #[fg=#928374]↻\($k)#[default]" else "" end)' "$d/fleet.json" > "$tmp" && mv -f "$tmp" "$d/hint"
   rm -f "$tmp"
 }
 
