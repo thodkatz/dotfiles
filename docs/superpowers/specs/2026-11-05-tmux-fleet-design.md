@@ -139,8 +139,8 @@ have no pane.
 | tmux-resurrect | restore the user's own windows after a laptop reboot | `@resurrect-processes` without `ssh` |
 | tmux-continuum | save every 15 min; auto-restore on the laptop only | `@continuum-restore on` in the laptop's `plugins.tmux` only |
 
-`pane-border-status top`, format `#{?@fleet-title,#{@fleet-title},#{pane_current_command}}`; agent panes
-(`@fleet-entry` set) use an accent `pane-border-style`, set per pane by `fleet`.
+`pane-border-status top`; the format shows an agent pane's `@fleet-title` in an accent colour (orange, bold),
+an overview pane's `@fleet-guest`, and any other pane's command (Clarification 4).
 
 ## Contract consumed
 
@@ -192,3 +192,6 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `@fleet-booted-<session>` set by `fleet up` lives only as long as the tmux server, so its absence on an
    existing fleet session means a restore; `fleet up` then kills and rebuilds that session. Windows of the user's
    own belong in other sessions.
+4. **The accent is on the border title, not a per-pane border style** (decision 12) — `folded`. Adjacent panes share
+   a border line, so a per-pane `pane-border-style` cannot mark one pane; `pane-border-format` colours the title
+   of panes with `@fleet-entry` instead, which needs no per-pane setting from `fleet`.
