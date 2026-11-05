@@ -680,6 +680,10 @@ envval() {
   [ -n "$v" ] || v=$(tr ' ' '\n' <<<"$env" | sed -n "s/^$1=//p" | head -n 1)
   printf '%s' "$v"
 }
+status_sh=${path%/*}/status.sh
+AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json)
+EOF
+}
 
 probe() { probe_script | ssh "${SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
 
