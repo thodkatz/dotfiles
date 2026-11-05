@@ -28,7 +28,7 @@ them from nixpkgs. Prefix is `C-b`.
 Laptop (Arch) setup, once:
 
 ```shell
-sudo pacman -S tmux jq fzf
+sudo pacman -S tmux jq fzf xclip   # xclip: tmux-yank's clipboard on X11
 mkdir -p ~/.config/fleet ~/.local/bin      # so stow links files into them, not the directories themselves
 stow -t "$HOME" --dotfiles -R tmux
 git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm
@@ -44,7 +44,9 @@ tmux                                  # then prefix I installs the plugins
 | `prefix h/j/k/l`, `"`, `%`, `c`, `r` | as before: vi pane moves, splits and windows in the current directory, reload |
 
 tmux-resurrect saves every 15 minutes (continuum) and the laptop restores the last save when its tmux server
-starts; `ssh` panes are not restored (resurrect's default), so fleet rebuilds its own session (below).
+starts. Saves leave out the `fleet` and `fleet-*` sessions (a hook in `tmux.conf`; a restore would merge into a
+fleet session already up), and `ssh` panes are not restored anyway (resurrect's default): fleet rebuilds its own
+session (below).
 
 ### fleet: every agent session in one tmux session
 
@@ -54,7 +56,27 @@ session running under dtach, attached over ssh. The hosts are in `~/.config/flee
 per line, from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
-hosts' advertised routes), then `fleet doctor`, which names the first thing missing.
+hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
+let `~/.ssh/config` pick it by subnet (nixos's guests are on `192.168.122.*`, thinkcentre's on `192.168.123.*`):
+
+```shell
+scp theo@nixos:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-nixos
+scp theo@thinkcentre:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-thinkcentre
+cat >> ~/.ssh/config <<'CONF'
+Host 192.168.122.*
+  User agentvm
+  IdentityFile ~/.ssh/agentvm-nixos
+  StrictHostKeyChecking accept-new
+Host 192.168.123.*
+  User agentvm
+  IdentityFile ~/.ssh/agentvm-thinkcentre
+  StrictHostKeyChecking accept-new
+CONF
+```
+
+Then `fleet doctor`, which names the first thing missing (a guest ssh that fails shows ssh's own reason). Guest ssh
+always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>` too. On a host,
+`fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by itself.
 
 | | |
 |---|---|
