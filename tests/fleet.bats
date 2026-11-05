@@ -90,3 +90,120 @@ wait_attached() {
   run "$FLEET" status agentvm-repos
   [ "$output" = "table of 192.168.122.51" ]
 }
+
+@test "up: overview, then one window per host·repo in order (D6)" {
+  run "$FLEET" up
+  [ "$status" -eq 0 ]
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'overview\nnixos·nixed\nthinkcentre·agent-methodology' ]
+  run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
+  [ "$output" = $'agentvm-repos\nagentvm-thinkrepos' ]
+}
+
+@test "up: only dtach rows get panes, tagged and titled (D7, D15)" {
+  "$FLEET" up
+  run entries
+  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-stall' ]
+  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
+  [[ "$output" == *'e-nixed-1|agentvm-repos · main · alive'* ]]
+  [[ "$output" == *'e-am-1|agentvm-thinkrepos · ? · alive'* ]]
+  wait_attached e-nixed-1
+  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "sync: idempotent, adds new entries, leaves untagged panes alone (D8)" {
+  "$FLEET" up
+  t split-window -d -t =fleet:2 'sleep 600'
+  before=$(t list-panes -a -F '#{pane_id}')
+  run "$FLEET" sync -t fleet
+  [ "$status" -eq 0 ]
+  [ "$(t list-panes -a -F '#{pane_id}')" = "$before" ]
+  add_row 192.168.122.51 "$NEW_ROW"
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -a -F '#{pane_id}' | wc -l)" -eq $(($(wc -l <<<"$before") + 1)) ]
+  run entries
+  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-2\ne-nixed-stall' ]
+  [ "$(t list-panes -t =fleet:2 -F '#{@fleet-entry}' | grep -c '^$')" -eq 1 ]
+}
+
+@test "sync: a gone entry whose attach ended is closed; a blocked one is retitled (D8)" {
+  touch "$FLEET_FIXTURES/attach-exits"
+  "$FLEET" up
+  wait_ended
+  # e-nixed-1 is gone; e-nixed-stall is now blocked (no continue).
+  drop_row 192.168.122.51 e-nixed-1
+  jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  "$FLEET" sync -t fleet
+  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-title}'
+  [[ "$output" != *'e-nixed-1|'* ]]
+  [[ "$output" == *'e-nixed-stall|agentvm-repos · impl/x · blocked #9'* ]]
+}
+
+@test "sync: an ended pane of a still-attachable entry is replaced (D8)" {
+  touch "$FLEET_FIXTURES/attach-exits"
+  "$FLEET" up
+  wait_ended
+  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-am-1" { print $1 }')
+  rm "$FLEET_FIXTURES/attach-exits"
+  "$FLEET" sync -t fleet
+  new=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry} #{@fleet-ended}' | awk '$2 == "e-am-1"')
+  [ -n "$new" ] && [ "${new%% *}" != "$old" ]
+  [[ "$new" != *' 1' ]]
+}
+
+@test "attach: a detach (socket still there) closes the pane (D11)" {
+  touch "$FLEET_FIXTURES/attach-exits" "$FLEET_FIXTURES/sock-alive"
+  "$FLEET" up
+  for i in $(seq 50); do [ -z "$(entries)" ] && break; sleep 0.1; done
+  [ -z "$(entries)" ]
+}
+
+@test "sync: one unreachable guest never fails it (D9)" {
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  run "$FLEET" up
+  [ "$status" -eq 0 ]
+  run entries
+  [ "$output" = $'e-nixed-1\ne-nixed-stall' ]
+  run "$FLEET" status agentvm-thinkrepos
+  [ "$output" = unreachable ]
+}
+
+@test "up: rebuilds a session without the boot marker, keeps one with it (D13)" {
+  "$FLEET" up
+  t new-window -d -t =fleet: -n mine 'sleep 600'
+  "$FLEET" up
+  t list-windows -t =fleet -F '#W' | grep -qx mine
+  t set -gu @fleet-booted-fleet
+  "$FLEET" up
+  ! t list-windows -t =fleet -F '#W' | grep -qx mine
+  [ "$(t show -gv @fleet-booted-fleet)" = 1 ]
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'overview\nnixos·nixed\nthinkcentre·agent-methodology' ]
+}
+
+@test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  run "$FLEET" --local up
+  [ "$status" -eq 0 ]
+  run t list-windows -t =fleet-nixos -F '#W'
+  [ "$output" = $'overview\nnixos·nixed' ]
+  [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
+  run "$FLEET" sync -t fleet-nixos
+  [ "$status" -eq 0 ]
+  ! grep -q 'theo@' "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "sync: no fleet session says so, exit 1" {
+  run "$FLEET" sync
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'no fleet session'* ]]
+}
+
+@test "sync: a guest unreachable for one sync keeps its live panes" {
+  "$FLEET" up
+  wait_attached e-am-1
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  "$FLEET" sync -t fleet
+  [[ "$(entries)" == *e-am-1* ]]
+}

@@ -95,7 +95,140 @@ status_of() {
   if [ "$out" = fleet:no-supervisor ]; then echo "no supervisor"; else printf '%s\n' "$out"; fi
 }
 
+# Probe every guest in parallel; write [{host, guest, ip, status, rows}] to $1
+# atomically (sync and the hint loop may run at once). status: ok,
+# unreachable, no-supervisor or error (status.sh printed no JSON array).
+discover() {
+  local out=$1 tmp i=0 h g ip
+  mkdir -p "${out%/*}"
+  tmp=$(mktemp -d "${out%/*}/.discover.XXXXXX")
+  while read -r h g ip; do
+    i=$((i + 1))
+    (
+      rows='[]' status=unreachable r=''
+      if [ "$g" != - ] && r=$(probe "$ip" json); then
+        if [ "$r" = fleet:no-supervisor ]; then status=no-supervisor
+        elif jq -e 'type == "array"' >/dev/null 2>&1 <<<"$r"; then status=ok rows=$r
+        else status=error; fi
+      fi
+      jq -n --arg host "$h" --arg guest "$g" --arg ip "$ip" --arg status "$status" --argjson rows "$rows" \
+        '{host: $host, guest: $guest, ip: $ip, status: $status, rows: $rows}' > "$tmp/$(printf %04d "$i").json"
+    ) &
+  done < <(guests)
+  wait
+  local files=("$tmp"/*.json)
+  if [ -e "${files[0]}" ]; then jq -s . "${files[@]}"; else echo '[]'; fi > "$tmp/fleet.json"
+  mv -f "$tmp/fleet.json" "$out"
+  rm -rf "$tmp"
+}
+
+# Attachable rows (continue starts with `dtach -a `), one tab-separated line
+# each: entry host guest ip repo branch live sock. A missing field is `?`.
+attachable() {
+  jq -r 'def q: if . == null or . == "" then "?" else tostring end;
+    .[] | . as $g | select(.status == "ok") | .rows[]
+    | select((.continue // "") | startswith("dtach -a "))
+    | [(.entry | q), $g.host, $g.guest, $g.ip, ((.repo // "") | split("/") | last | q),
+       (.branch | q), (.live | q), (.continue | split(" ")[2])]
+    | join("\t")' "$1"
+}
+
+# --- session -------------------------------------------------------------
+
+# Point LOCAL at the mode the session was made in.
+use_session() {
+  local m
+  m=$(tmx show -t "=$1:" -v @fleet-mode 2>/dev/null) || return 1
+  if [ "$m" = local ]; then LOCAL=1; else LOCAL=0; fi
+}
+
+# The session a sync or hint acts on: -t, else the current one, else the
+# default; a session fleet did not make falls back to fleet or fleet-<host>.
+# Called as $(...), so the caller runs use_session on the result.
+target_session() {
+  local s=${1:-}
+  [ -n "$s" ] || [ -z "${TMUX:-}" ] || s=$(tmx display -p '#S' 2>/dev/null)
+  [ -n "$s" ] || s=$(default_session)
+  if use_session "$s"; then echo "$s"; return; fi
+  for s in fleet "fleet-$(local_host)"; do
+    if use_session "$s"; then echo "$s"; return; fi
+  done
+  return 1
+}
+
+# Lay the session out from its fleet.json; see the spec's *Sync*.
+sync_layout() {
+  local s=$1 d json g pid entry ended host guest ip repo branch live sock title w wid have
+  d=$(sdir "$s"); json=$d/fleet.json
+  # Overview: one pane per guest.
+  have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
+  while read -r g; do
+    grep -qxF -- "$g" <<<"$have" && continue
+    pid=$(tmx split-window -d -t "=$s:overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
+    tmx set -p -t "$pid" @fleet-guest "$g"
+    tmx select-layout -t "=$s:overview" tiled >/dev/null
+  done < <(jq -r '.[] | select(.guest != "-") | .guest' "$json")
+
+  declare -A att=() paned=()
+  while IFS=$'\t' read -r entry _; do att[$entry]=1; done < <(attachable "$json")
+  # Tagged agent panes.
+  while IFS=$'\t' read -r pid entry ended; do
+    [ -n "$entry" ] || continue
+    if [ -n "${att[$entry]:-}" ]; then
+      if [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"; else paned[$entry]=1; fi
+      continue
+    fi
+    title=$(jq -r --arg e "$entry" 'def q: if . == null or . == "" then "?" else tostring end;
+      first(.[] | .guest as $g | .rows[]? | select(.entry == $e) | "\($g) · \(.branch | q) · \(.live | q)") // empty' "$json")
+    if [ -n "$title" ]; then tmx set -p -t "$pid" @fleet-title "$title"   # blocked or stopped
+    elif [ "$ended" = 1 ]; then tmx kill-pane -t "$pid"                   # gone, and its attach has ended
+    fi
+  done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\t#{@fleet-entry}\t#{@fleet-ended}')
+
+  # A pane for each attachable entry that has none, by host then repo.
+  while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
+    [ -z "${paned[$entry]:-}" ] || continue
+    w="$host·$repo" pid=''
+    wid=$(tmx list-windows -t "=$s" -F $'#{window_id}\t#{window_name}' | awk -F '\t' -v n="$w" '$2 == n { id = $1 } END { print id }')
+    if [ -n "$wid" ] && pid=$(tmx split-window -d -t "$wid" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")" 2>/dev/null); then
+      tmx select-layout -t "$wid" tiled >/dev/null
+    else
+      pid=$(tmx new-window -d -t "=$s:" -n "$w" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
+    fi
+    tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
+    tmx set -p -t "$pid" @fleet-title "$guest · $branch · $live" 2>/dev/null
+  done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
+}
+
 # --- commands ------------------------------------------------------------
+
+cmd_up() {
+  local s pid first
+  s=$(default_session)
+  if tmx has-session -t "=$s" 2>/dev/null; then
+    # The marker lives as long as the server: a session without it was
+    # restored by resurrect into a new server, untagged, so rebuild it.
+    [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = 1 ] && return 0
+    tmx kill-session -t "=$s"
+  fi
+  echo "fleet: discovering guests..." >&2
+  discover "$(sdir "$s")/fleet.json"
+  first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
+  pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$first")") \
+    || die "could not start tmux session $s"
+  tmx set -p -t "$pid" @fleet-guest "$first"
+  if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
+  tmx set -g "@fleet-booted-$s" 1
+  sync_layout "$s"
+}
+
+cmd_sync() {
+  local s
+  s=$(target_session "${1:-}") || die "no fleet session; start one with: fleet"
+  use_session "$s"   # target_session ran in a subshell
+  discover "$(sdir "$s")/fleet.json"
+  sync_layout "$s"
+}
 
 cmd_status() {
   local h g ip
@@ -104,6 +237,31 @@ cmd_status() {
     [ "$g" = "$1" ] && { status_of "$g" "$ip"; return 0; }
   done < <(guests)
   die "no guest $1"
+}
+
+# Pane command: attach to one session's dtach. C-] detaches (the pane closes,
+# the agent runs on); when the session itself ends, the pane stays, marked
+# @fleet-ended, until the next sync.
+cmd__attach() {
+  local ip=$1 sock=$2
+  ssh -t "${SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r winch"
+  # shellcheck disable=SC2029  # $sock is quoted here on purpose, for the remote shell
+  if ssh "${SSH_OPTS[@]}" "$GUEST_USER@$ip" "test -S $(printf %q "$sock")" </dev/null 2>/dev/null; then exit 0; fi
+  tmx set -p -t "${TMUX_PANE:-}" @fleet-ended 1
+  echo "[fleet] session ended; prefix F syncs"
+  exec tail -f /dev/null
+}
+
+# Pane command: one guest's status, every FLEET_OVERVIEW_INTERVAL seconds.
+cmd__overview() {
+  local s=$1 g=$2 ip out
+  while :; do
+    ip=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .ip) // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
+    out=$(status_of "$g" "$ip")
+    clear
+    printf '== %s (%s) %s\n%s\n' "$g" "$ip" "$(date +%H:%M:%S)" "$out"
+    sleep "${FLEET_OVERVIEW_INTERVAL:-30}"
+  done
 }
 
 usage() {
@@ -130,6 +288,14 @@ main() {
   local cmd=${1:-attach}
   [ $# -eq 0 ] || shift
   case $cmd in
+    attach)
+      cmd_up || exit 1
+      if [ -n "${TMUX:-}" ]; then tmx switch-client -t "=$(default_session)"
+      else exec tmux ${FLEET_TMUX_SOCKET:+-L "$FLEET_TMUX_SOCKET"} attach -t "=$(default_session)"; fi ;;
+    up) cmd_up ;;
+    sync) if [ "${1:-}" = -t ]; then cmd_sync "${2:-}"; else cmd_sync; fi ;;
+    _overview) cmd__overview "$@" ;;
+    _attach) cmd__attach "$@" ;;
     ls) guests ;;
     status) [ $# -ge 1 ] || die "usage: fleet status GUEST"; cmd_status "$1" ;;
     help|-h|--help) usage ;;
