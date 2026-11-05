@@ -11,6 +11,7 @@ FLEET_SELF=$(readlink -f "${BASH_SOURCE[0]}")
 GUEST_USER=${AGENTVM_GUEST_USER:-agentvm}
 STATE=${FLEET_STATE:-${XDG_RUNTIME_DIR:-/tmp}/fleet-$UID}
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5)
+GUEST_SSH_OPTS=()   # set by guest_ssh_opts, once LOCAL is known
 LOCAL=0
 
 die() { echo "fleet: $*" >&2; exit 1; }
@@ -24,8 +25,25 @@ tmx() {
   tmux "${a[@]}" "$@"
 }
 
-# A command line for a pane: this script, its arguments quoted.
-self_cmd() { printf '%q ' "$FLEET_SELF" "$@"; }
+# A command line for a pane: this script, its arguments quoted, with this
+# run's --local and AGENTVM_KEY (a running server may not have the latter).
+self_cmd() {
+  [ -z "${AGENTVM_KEY:-}" ] || printf 'AGENTVM_KEY=%q ' "$AGENTVM_KEY"
+  printf '%q ' "$FLEET_SELF"
+  [ "$LOCAL" != 1 ] || printf -- '--local '
+  printf '%q ' "$@"
+}
+
+# ssh options for a guest. Guests trust only their host's agentvm key, and
+# their host keys are new to us: accept-new, and AGENTVM_KEY, else under
+# --local the host's own key. No IdentitiesOnly: ~/.ssh/config and the agent
+# still count (the laptop's way in).
+guest_ssh_opts() {
+  local k=${AGENTVM_KEY:-}
+  GUEST_SSH_OPTS=("${SSH_OPTS[@]}" -o StrictHostKeyChecking=accept-new)
+  [ -n "$k" ] || [ "$LOCAL" != 1 ] || [ ! -e "$HOME/.agentvm/keys/id_ed25519" ] || k=$HOME/.agentvm/keys/id_ed25519
+  [ -z "$k" ] || GUEST_SSH_OPTS+=(-i "$k")
+}
 
 local_host() { echo "${FLEET_HOSTNAME:-$(uname -n)}"; }
 
@@ -86,7 +104,8 @@ AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$
 EOF
 }
 
-probe() { probe_script | ssh "${SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
+# timeout: a hung status.sh must not hold up a sync.
+probe() { probe_script | timeout "${FLEET_PROBE_TIMEOUT:-30}" ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
 
 # A guest's status.sh table, or why there is none.
 status_of() {
@@ -140,6 +159,7 @@ use_session() {
   local m
   m=$(tmx show -t "=$1:" -v @fleet-mode 2>/dev/null) || return 1
   if [ "$m" = local ]; then LOCAL=1; else LOCAL=0; fi
+  guest_ssh_opts
 }
 
 # The session a sync or hint acts on: -t, else the current one, else the
@@ -205,20 +225,22 @@ sync_layout() {
 # Write <state>/<s>/hint from its fleet.json: `<host> N▶ M⚠` per host, then
 # `↻K` for attachable entries with no pane.
 hint_write() {
-  local s=$1 d k entry
+  local s=$1 d k entry tmp
   d=$(sdir "$s")
   declare -A paned=()
   while read -r entry; do [ -z "$entry" ] || paned[$entry]=1; done \
     < <(tmx list-panes -s -t "=$s" -F '#{@fleet-entry}' 2>/dev/null)
   k=0
   while IFS=$'\t' read -r entry _; do [ -n "${paned[$entry]:-}" ] || k=$((k + 1)); done < <(attachable "$d/fleet.json")
+  tmp=$(mktemp "$d/.hint.XXXXXX") || return 1   # the loop and a sync may write at once
   jq -r --argjson k "$k" '
     group_by(.host) | map(.[0].host as $h
       | if all(.[]; .status != "ok") then "\($h) ✗"
         else [.[] | select(.status == "ok") | .rows[]] as $r
           | "\($h) \([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)▶ \([$r[] | select((.kind // "") != "" or .state == "blocked")] | length)⚠"
         end)
-    | join(" · ") + (if $k > 0 then " · ↻\($k)" else "" end)' "$d/fleet.json" > "$d/hint.tmp" && mv -f "$d/hint.tmp" "$d/hint"
+    | join(" · ") + (if $k > 0 then " · ↻\($k)" else "" end)' "$d/fleet.json" > "$tmp" && mv -f "$tmp" "$d/hint"
+  rm -f "$tmp"
 }
 
 hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
@@ -251,6 +273,10 @@ cmd_sync() {
   local s
   s=$(target_session "${1:-}") || die "no fleet session; start one with: fleet"
   use_session "$s"   # target_session ran in a subshell
+  # One sync at a time per session: two would both add the same panes.
+  mkdir -p "$(sdir "$s")"
+  exec 9>"$(sdir "$s")/sync.lock"
+  flock -n 9 || { echo "fleet: a sync of $s is already running" >&2; exit 0; }
   discover "$(sdir "$s")/fleet.json"
   sync_layout "$s"
   hint_write "$s"
@@ -267,15 +293,17 @@ cmd_hint() {
     use_session "$s"
     hint_refresh "$s"
   fi
-  [ -n "$t" ] && [ -r "$(sdir "$t")/hint" ] && { cat "$(sdir "$t")/hint"; exit 0; }
-  for s in fleet "fleet-$(local_host)"; do
-    [ -r "$(sdir "$s")/hint" ] && { cat "$(sdir "$s")/hint"; exit 0; }
-  done
+  [ -n "$t" ] && hint_cat "$t" && exit 0
+  for s in fleet "fleet-$(local_host)"; do hint_cat "$s" && exit 0; done
   exit 0
 }
 
+# A session's cached hint, only while that session exists (a cache outlives
+# its session when the loop is killed with the server).
+hint_cat() { tmx has-session -t "=$1" 2>/dev/null && [ -r "$(sdir "$1")/hint" ] && cat "$(sdir "$1")/hint"; }
+
 cmd_doctor() {
-  local fail=0 c dest h g ip
+  local fail=0 c dest h g ip err
   ok() { echo "ok    $*"; }
   bad() { echo "FAIL  $*"; fail=1; }
   for c in tmux jq ssh fzf; do
@@ -297,8 +325,11 @@ cmd_doctor() {
       if ip route get "$ip" 2>/dev/null | grep -q tailscale; then ok "route to $ip via tailscale"
       else bad "no tailnet route to $ip ($g on $h): tailscale up --accept-routes"; fi
     fi
-    if ssh "${SSH_OPTS[@]}" "$GUEST_USER@$ip" command -v dtach </dev/null >/dev/null 2>&1; then ok "ssh $GUEST_USER@$ip ($g): dtach"
-    else bad "ssh $GUEST_USER@$ip ($g): no ssh, or no dtach there"; fi
+    if err=$(ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" command -v dtach </dev/null 2>&1 >/dev/null); then ok "ssh $GUEST_USER@$ip ($g): dtach"
+    else
+      bad "ssh $GUEST_USER@$ip ($g): no ssh, or no dtach there"
+      [ -z "$err" ] || echo "      $(tail -n 1 <<<"$err")"   # ssh's own reason
+    fi
   done < <(guests)
   return "$fail"
 }
@@ -313,15 +344,17 @@ cmd_status() {
 }
 
 # Pane command: attach to one session's dtach. C-] detaches (the pane closes,
-# the agent runs on); when the session itself ends, the pane stays, marked
-# @fleet-ended, until the next sync.
+# the agent runs on); when the session itself ends or the link is lost (ssh
+# exits 255), the pane stays, marked @fleet-ended, until the next sync, which
+# closes it or, if the entry is still attachable, attaches afresh.
 cmd__attach() {
-  local ip=$1 sock=$2
-  ssh -t "${SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r winch"
+  local ip=$1 sock=$2 rc
+  ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r winch"
+  rc=$?
   # shellcheck disable=SC2029  # $sock is quoted here on purpose, for the remote shell
-  if ssh "${SSH_OPTS[@]}" "$GUEST_USER@$ip" "test -S $(printf %q "$sock")" </dev/null 2>/dev/null; then exit 0; fi
+  if [ "$rc" != 255 ] && ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "test -S $(printf %q "$sock")" </dev/null 2>/dev/null; then exit 0; fi
   tmx set -p -t "${TMUX_PANE:-}" @fleet-ended 1
-  echo "[fleet] session ended; prefix F syncs"
+  if [ "$rc" = 255 ]; then echo "[fleet] link lost; prefix F syncs"; else echo "[fleet] session ended; prefix F syncs"; fi
   exec tail -f /dev/null
 }
 
@@ -349,7 +382,7 @@ cmd__hintloop() {
     hint_refresh "$s"
     sleep "${FLEET_HINT_INTERVAL:-60}"
   done
-  rm -f "$pidf"
+  rm -f "$pidf" "$(sdir "$s")/hint"
 }
 
 usage() {
@@ -373,6 +406,7 @@ EOF
 
 main() {
   if [ "${1:-}" = --local ]; then LOCAL=1; shift; fi
+  guest_ssh_opts
   local cmd=${1:-attach}
   [ $# -eq 0 ] || shift
   case $cmd in

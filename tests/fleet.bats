@@ -13,6 +13,9 @@ setup() {
   export FLEET_TMUX_SOCKET=fleet-test-$$-$BATS_TEST_NUMBER
   export FLEET_TMUX_CONF=/dev/null
   export FLEET_NO_HINTLOOP=1 FLEET_HINT_INTERVAL=3600 FLEET_OVERVIEW_INTERVAL=3600
+  export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.agentvm key leaks in
+  mkdir -p "$HOME"
+  unset AGENTVM_KEY
   unset TMUX TMUX_PANE
 }
 
@@ -108,7 +111,7 @@ wait_attached() {
   [[ "$output" == *'e-nixed-1|agentvm-repos · main · alive'* ]]
   [[ "$output" == *'e-am-1|agentvm-thinkrepos · ? · alive'* ]]
   wait_attached e-nixed-1
-  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
+  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "sync: idempotent, adds new entries, leaves untagged panes alone (D8)" {
@@ -197,7 +200,7 @@ wait_attached() {
 @test "sync: no fleet session says so, exit 1" {
   run "$FLEET" sync
   [ "$status" -eq 1 ]
-  [[ "$output" == *'no fleet session'* ]]
+  [ "$output" = "fleet: no fleet session; start one with: fleet" ]
 }
 
 @test "sync: a guest unreachable for one sync keeps its live panes" {
@@ -261,4 +264,119 @@ wait_attached() {
   run "$FLEET" doctor
   [ "$status" -eq 0 ]
   [[ "$output" != *FAIL* ]]
+}
+
+@test "doctor: a failed guest ssh shows ssh's own reason (D14)" {
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  run "$FLEET" doctor
+  [[ "$output" == *$'(agentvm-thinkrepos): no ssh, or no dtach there\n      ssh: connect to host 192.168.123.51 port 22: Connection timed out'* ]]
+}
+
+@test "ssh: guests get accept-new, hosts don't; no -i by default" {
+  "$FLEET" status agentvm-repos
+  grep -q 'StrictHostKeyChecking=accept-new agentvm@192.168.122.51 bash -s -- table' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q 'accept-new theo@' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "ssh: AGENTVM_KEY is the guests' identity, in panes too" {
+  export AGENTVM_KEY=/keys/agentvm
+  "$FLEET" up
+  wait_attached e-nixed-1
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- json' "$FLEET_FIXTURES/ssh.log"
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 dtach -a' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "ssh --local: the host's agentvm key when it exists, in panes too" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  "$FLEET" --local status agentvm-repos
+  ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
+  mkdir -p "$HOME/.agentvm/keys" && touch "$HOME/.agentvm/keys/id_ed25519"
+  "$FLEET" --local up
+  wait_attached e-nixed-1
+  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 dtach -a" "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "attach: a lost link (ssh 255) says so and marks the pane ended" {
+  touch "$FLEET_FIXTURES/attach-lost"
+  "$FLEET" up
+  wait_ended
+  pid=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  for i in $(seq 50); do t capture-pane -p -t "$pid" | grep -q 'link lost' && break; sleep 0.1; done
+  t capture-pane -p -t "$pid" | grep -qx '\[fleet\] link lost; prefix F syncs'
+  ! grep -q 'test -S' "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "sync: an ended pane whose guest is unreachable is closed" {
+  touch "$FLEET_FIXTURES/attach-exits"
+  "$FLEET" up
+  wait_ended
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  "$FLEET" sync -t fleet
+  run entries
+  [ "$output" = $'e-nixed-1\ne-nixed-stall' ]
+}
+
+@test "sync: two at once add each pane once; a held lock exits 0 and says so" {
+  "$FLEET" up
+  add_row 192.168.122.51 "$NEW_ROW"
+  "$FLEET" sync -t fleet & "$FLEET" sync -t fleet; wait
+  run entries
+  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-2\ne-nixed-stall' ]
+  flock "$FLEET_STATE/fleet/sync.lock" sleep 3 >/dev/null 3>&- &
+  holder=$!
+  for i in $(seq 50); do ! flock -n "$FLEET_STATE/fleet/sync.lock" true && break; sleep 0.1; done
+  add_row 192.168.122.51 "${NEW_ROW//nixed-2/nixed-3}"
+  run "$FLEET" sync -t fleet
+  [ "$status" -eq 0 ]
+  [ "$output" = "fleet: a sync of fleet is already running" ]
+  [[ "$(entries)" != *e-nixed-3* ]]
+  kill "$holder" 2>/dev/null || true
+}
+
+@test "status: a hung status.sh times out as unreachable" {
+  touch "$FLEET_FIXTURES/hang-192.168.122.51"
+  FLEET_PROBE_TIMEOUT=1 run "$FLEET" status agentvm-repos
+  [ "$status" -eq 0 ]
+  [ "$output" = unreachable ]
+}
+
+@test "status: an unknown guest dies with 'no guest'" {
+  run "$FLEET" status nope
+  [ "$status" -eq 1 ]
+  [ "$output" = "fleet: no guest nope" ]
+}
+
+@test "hint: nothing once the session is gone, though its cache remains (D10)" {
+  "$FLEET" up
+  t new-session -d -s mine 'sleep 600'
+  [ -n "$("$FLEET" hint -t mine)" ]
+  t kill-session -t =fleet
+  [ -r "$FLEET_STATE/fleet/hint" ]
+  run "$FLEET" hint -t mine
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "hint loop: removes the hint when its session ends (D10)" {
+  "$FLEET" up
+  FLEET_HINT_INTERVAL=0.2 "$FLEET" _hintloop fleet &
+  for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
+  t kill-session -t =fleet
+  wait
+  [ ! -e "$FLEET_STATE/fleet/hint" ]
+  [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
+}
+
+@test "tmux.conf: resurrect's post-save hook drops fleet's sessions from a save" {
+  t -f "$ROOT/tmux/dot-config/tmux/tmux.conf" start-server \; show -gv @resurrect-hook-post-save-layout > "$BATS_TEST_TMPDIR/hook"
+  save=$BATS_TEST_TMPDIR/tmux_resurrect_x.txt
+  printf '%s\n' $'pane\tfleet\t1\t1\t:*\t1\tt\t:/\t1\tssh\t1\t0' $'pane\tfleet-nixos\t2\t0\t:-\t1\tt\t:/\t1\tssh\t1\t0' \
+    $'pane\tmine\t1\t1\t:*\t1\tt\t:/\t1\tzsh\t1\t0' $'pane\tfleetwood\t1\t1\t:*\t1\tt\t:/\t1\tzsh\t1\t0' \
+    $'window\tfleet\t1\t:overview\t1\t:*\ttiled\t:' $'window\tmine\t1\t:zsh\t1\t:*\tlay\t:' $'state\tfleet\tmine' > "$save"
+  # As resurrect's execute_hook runs it: eval "$hook <quoted path>".
+  eval "$(cat "$BATS_TEST_TMPDIR/hook") $(printf %q "$save")"
+  run cut -f 1,2 "$save"
+  [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
 }
