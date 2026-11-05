@@ -1,0 +1,4 @@
+[
+  {"repo": "/workspace/agent-methodology", "worktree": "/workspace/agent-methodology", "live": "alive", "state": "running",
+   "entry": "e-am-1", "continue": "dtach -a /var/tmp/agent-sessions/e-am-1.sock -r winch"}
+]

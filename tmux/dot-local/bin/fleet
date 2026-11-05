@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# fleet: one tmux session showing every agent session on the microVM guests of
+# the hosts in ~/.config/fleet/hosts (or, with --local, of this host alone).
+# Window `overview` has one pane per guest running its supervisor's status.sh;
+# then one window per <host>·<repo> with one interactive pane per session
+# running under dtach. Syncs only when asked (prefix F, `fleet sync`).
+# Design: docs/superpowers/specs/2026-11-05-tmux-fleet-design.md in dotfiles.
+set -uo pipefail
+
+FLEET_SELF=$(readlink -f "${BASH_SOURCE[0]}")
+GUEST_USER=${AGENTVM_GUEST_USER:-agentvm}
+STATE=${FLEET_STATE:-${XDG_RUNTIME_DIR:-/tmp}/fleet-$UID}
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5)
+LOCAL=0
+
+die() { echo "fleet: $*" >&2; exit 1; }
+
+# tmux on the fleet's server: FLEET_TMUX_SOCKET and FLEET_TMUX_CONF are for
+# the tests, which run a private server with no config.
+tmx() {
+  local a=()
+  [ -z "${FLEET_TMUX_SOCKET:-}" ] || a+=(-L "$FLEET_TMUX_SOCKET")
+  [ -z "${FLEET_TMUX_CONF:-}" ] || a+=(-f "$FLEET_TMUX_CONF")
+  tmux "${a[@]}" "$@"
+}
+
+# A command line for a pane: this script, its arguments quoted.
+self_cmd() { printf '%q ' "$FLEET_SELF" "$@"; }
+
+local_host() { echo "${FLEET_HOSTNAME:-$(uname -n)}"; }
+
+default_session() { if [ "$LOCAL" = 1 ]; then echo "fleet-$(local_host)"; else echo fleet; fi; }
+
+sdir() { echo "$STATE/$1"; }
+
+hosts_file() { echo "${FLEET_HOSTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/fleet/hosts}"; }
+
+# --- discovery -----------------------------------------------------------
+
+# projects.json on stdin -> "host guest ip" lines.
+projects_lines() { jq -r --arg h "$1" 'to_entries[] | "\($h) \(.value.vmName) \(.value.ip)"' 2>/dev/null; }
+
+# Every guest, one "host guest ip" line each. A host whose projects.json can't
+# be read gives "host - -".
+guests() {
+  if [ "$LOCAL" = 1 ]; then
+    projects_lines "$(local_host)" < "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json}"
+    return
+  fi
+  local f dest out
+  f=$(hosts_file)
+  [ -r "$f" ] || die "no hosts file $f (one ssh destination per line, e.g. theo@nixos), or use --local"
+  while read -r dest; do
+    case $dest in ''|'#'*) continue ;; esac
+    if out=$(ssh "${SSH_OPTS[@]}" "$dest" cat /etc/agentvm/projects.json </dev/null 2>/dev/null) && [ -n "$out" ]; then
+      projects_lines "${dest#*@}" <<<"$out"
+    else
+      echo "${dest#*@} - -"
+    fi
+  done < "$f"
+}
+
+# The script a guest runs (`bash -s -- json|table`): find the agent-supervise
+# user unit's status.sh and AGENT_SUPERVISE_REPOS, then run it. Not `bash -l`:
+# NixOS's /etc/profile resets PATH.
+probe_script() {
+  cat <<'EOF'
+mode=${1:-table}
+unit=agent-supervise.service
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [ "$(systemctl --user show "$unit" -p LoadState --value 2>/dev/null)" != loaded ]; then
+  echo fleet:no-supervisor; exit 0
+fi
+exec_start=$(systemctl --user show "$unit" -p ExecStart --value)
+path=${exec_start#*path=}; path=${path%% *}
+env=$(systemctl --user show "$unit" -p Environment --value)
+# A value with spaces is quoted as a whole ("NAME=a b"); others are bare words.
+envval() {
+  local v
+  v=$(sed -n "s/.*\"$1=\([^\"]*\)\".*/\1/p" <<<"$env")
+  [ -n "$v" ] || v=$(tr ' ' '\n' <<<"$env" | sed -n "s/^$1=//p" | head -n 1)
+  printf '%s' "$v"
+}
+status_sh=${path%/*}/status.sh
+AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json)
+EOF
+}
+
+probe() { probe_script | ssh "${SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
+
+# A guest's status.sh table, or why there is none.
+status_of() {
+  local out
+  if [ -z "${2:-}" ] || [ "$2" = - ] || ! out=$(probe "$2" table); then echo unreachable; return; fi
+  if [ "$out" = fleet:no-supervisor ]; then echo "no supervisor"; else printf '%s\n' "$out"; fi
+}
+
+# --- commands ------------------------------------------------------------
+
+cmd_status() {
+  local h g ip
+  # shellcheck disable=SC2034 # h (the host column) is unused here
+  while read -r h g ip; do
+    [ "$g" = "$1" ] && { status_of "$g" "$ip"; return 0; }
+  done < <(guests)
+  die "no guest $1"
+}
+
+usage() {
+  cat <<'EOF'
+usage: fleet [--local] [command]
+
+  (none)        start the fleet session if needed, then attach or switch to it
+  up            start the fleet session if needed (no attach)
+  sync [-t s]   rediscover and add/close agent panes (prefix F)
+  ls            list guests: host guest ip
+  status GUEST  that guest's status.sh table, or unreachable / no supervisor
+  hint [-t s] [--refresh]   the status-bar hint (cached; --refresh rediscovers)
+  doctor        check each prerequisite, name the one that fails
+  help          this text
+
+--local: this host's guests only (/etc/agentvm/projects.json), session fleet-<host>.
+Hosts: ~/.config/fleet/hosts, one ssh destination per line (theo@nixos).
+In an agent pane, C-] detaches: the pane closes, the agent keeps running.
+EOF
+}
+
+main() {
+  if [ "${1:-}" = --local ]; then LOCAL=1; shift; fi
+  local cmd=${1:-attach}
+  [ $# -eq 0 ] || shift
+  case $cmd in
+    ls) guests ;;
+    status) [ $# -ge 1 ] || die "usage: fleet status GUEST"; cmd_status "$1" ;;
+    help|-h|--help) usage ;;
+    _probe-script) probe_script ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"

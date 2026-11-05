@@ -1,0 +1,6 @@
+{
+  "repos": {
+    "vmName": "agentvm-repos", "ip": "192.168.122.51", "path": "/home/theo/repos",
+    "mac": "02:00:00:00:00:51", "extras": ["agent-supervisor"], "tap": "vm-repos", "stateDir": "/var/lib/microvms/agentvm-repos"
+  }
+}

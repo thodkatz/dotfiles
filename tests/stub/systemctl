@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stub systemctl for the probe-script test: an agent-supervise user unit
+# whose ExecStart is $FLEET_FIXTURES/am/shared/claude/supervise.sh.
+fx=$FLEET_FIXTURES
+case "$*" in
+  *'-p LoadState'*) if [ -e "$fx/unit-missing" ]; then echo not-found; else echo loaded; fi ;;
+  *'-p ExecStart'*) echo "{ path=$fx/am/shared/claude/supervise.sh ; argv[]=$fx/am/shared/claude/supervise.sh ; ignore_errors=no ; status=0 }" ;;
+  *'-p Environment'*) echo '"AGENT_CONTINUE_BINS=claude claude2" "AGENT_SUPERVISE_REPOS=/workspace/a /workspace/b" DISABLE_AUTOUPDATER=1 TMPDIR=/var/tmp' ;;
+esac

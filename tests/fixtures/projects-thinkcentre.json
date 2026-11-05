@@ -1,0 +1,6 @@
+{
+  "thinkrepos": {
+    "vmName": "agentvm-thinkrepos", "ip": "192.168.123.51", "path": "/home/theo/repos",
+    "mac": "02:00:00:00:01:51", "extras": ["agent-supervisor"], "tap": "vm-thinkrepos", "stateDir": "/var/lib/microvms/agentvm-thinkrepos"
+  }
+}

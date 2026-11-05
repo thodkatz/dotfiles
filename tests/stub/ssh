@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Stub ssh for tests/fleet.bats: answers from $FLEET_FIXTURES by destination
+# and command, and logs every call to $FLEET_FIXTURES/ssh.log.
+fx=$FLEET_FIXTURES
+echo "ssh $*" >> "$fx/ssh.log"
+while [ $# -gt 0 ]; do
+  case $1 in -o) shift 2 ;; -t|-T) shift ;; *) break ;; esac
+done
+dest=${1#*@}; shift
+cmd="$*"
+[ ! -e "$fx/fail-$dest" ] || exit 255
+case $cmd in
+  'cat /etc/agentvm/projects.json') cat "$fx/projects-$dest.json" ;;
+  'bash -s -- json'|'bash -s -- table')
+    cat >/dev/null
+    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor
+    elif [ "$cmd" = 'bash -s -- json' ]; then cat "$fx/guest-$dest.json"
+    else echo "table of $dest"; fi ;;
+  'dtach -a '*) [ -e "$fx/attach-exits" ] && exit 0; exec sleep 600 ;;
+  'test -S '*) [ -e "$fx/sock-alive" ] ;;
+  true|'command -v dtach') exit 0 ;;
+  *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;
+esac
