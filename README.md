@@ -48,6 +48,31 @@ starts. Saves leave out the `fleet` and `fleet-*` sessions (a hook in `tmux.conf
 fleet session already up), and `ssh` panes are not restored anyway (resurrect's default): fleet rebuilds its own
 session (below).
 
+### Update and run
+
+After pulling changes to `tmux/` (e.g. the gruvbox theme, which dropped catppuccin):
+
+```shell
+# Laptop
+cd ~/repos/dotfiles && git pull
+stow -t "$HOME" --dotfiles -R tmux    # links any new file; edits to linked ones are live already
+# in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
+tmux kill-session -t fleet; fleet    # rebuild fleet: its windows and pane borders take the new look
+
+# Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
+cd ~/repos/dotfiles && git pull
+# a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux:
+# prefix r, and `tmux kill-session -t fleet-$(hostname); fleet --local`
+```
+
+`prefix r` restyles everything already open except fleet's windows: their names and tags come from `fleet`, so
+rebuild its session as above (a plain `prefix F` refreshes the pane borders, not the window names). If a reload
+leaves stale styling behind, `tmux kill-server` starts clean; resurrect brings your own sessions back.
+
+Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
+guests only). Inside: `prefix F` syncs panes with the running sessions, `C-]` detaches from an agent pane, and
+`fleet doctor` says what is missing when something doesn't show. Details in *fleet* below.
+
 ### fleet: every agent session in one tmux session
 
 `fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
