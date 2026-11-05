@@ -46,6 +46,30 @@ tmux                                  # then prefix I installs the plugins
 tmux-resurrect saves every 15 minutes (continuum) and the laptop restores the last save when its tmux server
 starts; `ssh` panes are not restored (resurrect's default), so fleet rebuilds its own session (below).
 
+### fleet: every agent session in one tmux session
+
+`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
+supervisor table (`status.sh`, refreshed every 30 s), then one window per `<host>·<repo>` with one pane per agent
+session running under dtach, attached over ssh. The hosts are in `~/.config/fleet/hosts` (one ssh destination
+per line, from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
+
+Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
+hosts' advertised routes), then `fleet doctor`, which names the first thing missing.
+
+| | |
+|---|---|
+| `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
+| `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; nothing syncs on its own |
+| `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
+| status bar `nixos 3▶ 2⚠ · ↻1` | per host: live sessions, sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
+| `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
+
+Agent panes have an orange title on their border (`<guest> · <branch> · <state>`); your own panes show their
+command. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+
+Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
+server; nothing reaches a real host).
+
 ### xorg-conf (edge case)
 
 `xorg-conf` is the one package that doesn't target `$HOME` — it targets `/etc`, so it needs

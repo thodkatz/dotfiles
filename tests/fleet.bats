@@ -248,3 +248,17 @@ wait_attached() {
   [ "$status" -eq 0 ]
   [ "$output" = "nixos 2▶ 2⚠" ]
 }
+
+@test "doctor: names the guest whose ssh fails, exits 1 (D14)" {
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'FAIL  ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
+  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos)'* ]]
+}
+
+@test "doctor: all good exits 0 (D14)" {
+  run "$FLEET" doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *FAIL* ]]
+}
