@@ -18,6 +18,34 @@ The `git` package includes `dot-config/git/ignore`, which Git treats as the defa
 excludes file, so patterns there (currently `.agentvm.yml`) are ignored in every repo without
 touching any project's own `.gitignore`.
 
+## tmux
+
+`tmux/` is the one tmux config for this laptop and the NixOS hosts: nixed links each host's
+`~/.config/tmux/tmux.conf` to its own checkout of this repo (`~/repos/dotfiles`). `tmux.conf` sources
+`plugins.tmux` last; here that file loads the plugins through TPM, on the hosts nixed generates one that loads
+them from nixpkgs. Prefix is `C-b`.
+
+Laptop (Arch) setup, once:
+
+```shell
+sudo pacman -S tmux jq fzf
+mkdir -p ~/.config ~/.local/bin      # so stow links files into them, not the directories themselves
+stow -t "$HOME" --dotfiles -R tmux
+git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm
+tmux                                  # then prefix I installs the plugins
+```
+
+| Key | Does |
+|---|---|
+| `prefix f` | sessionx: fuzzy-jump to any session or window, with preview |
+| `prefix Tab` | extrakto: pick a hash, path, URL or `#PR` from the pane's text |
+| `y` (copy mode) | tmux-yank: copy to the system clipboard |
+| `prefix F` | `fleet sync` (below) |
+| `prefix h/j/k/l`, `"`, `%`, `c`, `r` | as before: vi pane moves, splits and windows in the current directory, reload |
+
+tmux-resurrect saves every 15 minutes (continuum) and the laptop restores the last save when its tmux server
+starts; `ssh` panes are not restored (resurrect's default), so fleet rebuilds its own session (below).
+
 ### xorg-conf (edge case)
 
 `xorg-conf` is the one package that doesn't target `$HOME` — it targets `/etc`, so it needs
