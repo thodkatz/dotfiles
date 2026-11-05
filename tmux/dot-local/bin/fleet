@@ -181,7 +181,7 @@ target_session() {
 live_icon() {
   case $1 in
     alive) echo 🟢 ;; waiting) echo ⏳ ;; stalled) echo 🟡 ;; blocked*) echo ✋ ;;
-    dead) echo 🔴 ;; ended) echo ⚫ ;; done) echo ✅ ;; gone) echo 👻 ;;
+    dead*) echo 🔴 ;; ended) echo ⚫ ;; done) echo ✅ ;; gone) echo 👻 ;;
   esac
 }
 pane_title() { local i; i=$(live_icon "$3"); echo "${i:+$i }$1 · $2 · $3"; }

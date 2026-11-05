@@ -175,7 +175,7 @@ wait_attached() {
 
 @test "sync: a title's icon follows its live value, refreshed on every sync" {
   "$FLEET" up
-  for pair in alive:🟢 waiting:⏳ stalled:🟡 'blocked #3:✋' dead:🔴 ended:⚫ done:✅ gone:👻 '-:' '?:'; do
+  for pair in alive:🟢 waiting:⏳ stalled:🟡 'blocked #3:✋' dead:🔴 'dead?:🔴' ended:⚫ done:✅ gone:👻 '-:' '?:'; do
     live=${pair%:*} icon=${pair##*:}
     jq --arg l "$live" 'map(if .entry == "e-nixed-stall" then .live = $l else . end)' \
       "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
