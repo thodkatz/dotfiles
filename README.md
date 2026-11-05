@@ -29,7 +29,7 @@ Laptop (Arch) setup, once:
 
 ```shell
 sudo pacman -S tmux jq fzf
-mkdir -p ~/.config ~/.local/bin      # so stow links files into them, not the directories themselves
+mkdir -p ~/.config/fleet ~/.local/bin      # so stow links files into them, not the directories themselves
 stow -t "$HOME" --dotfiles -R tmux
 git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm
 tmux                                  # then prefix I installs the plugins
