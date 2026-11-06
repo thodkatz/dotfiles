@@ -190,6 +190,28 @@ live_look() {
   esac
 }
 
+# A status.sh table in live_look's colours, for the overview: status.sh colours
+# only on a tty, and over ssh its stdout is a pipe. Each row in its leading
+# glyph's colour, the header bold, the rule and the supervisor line grey; a
+# line already coloured, or not the table's (unreachable), passes through.
+colour_table() {
+  local v look hex line g
+  declare -A rgb=()
+  for v in alive waiting stalled blocked dead done gone ended; do
+    look=$(live_look "$v"); hex=${look#* \#}
+    rgb[${look% *}]="$((16#${hex:0:2}));$((16#${hex:2:2}));$((16#${hex:4:2}))"
+  done
+  local grey=${rgb[·]} n=0
+  while IFS= read -r line; do
+    n=$((n + 1)) g=${line:0:1}
+    if [[ $line == *$'\033'* ]]; then printf '%s\n' "$line"
+    elif [ $n = 1 ] && [[ $line == "  "* ]]; then printf '\033[1m%s\033[0m\n' "$line"
+    elif [[ $line == "  ─"* || $line == "supervisor: "* ]]; then printf '\033[38;2;%sm%s\033[0m\n' "$grey" "$line"
+    elif [ "${line:1:1}" = " " ] && [ -n "${rgb[$g]:-}" ]; then printf '\033[38;2;%sm%s\033[0m\n' "${rgb[$g]}" "$line"
+    else printf '%s\n' "$line"; fi
+  done
+}
+
 # A host's colour, by its place in fleet.json's sorted hosts: the tab colour
 # of its windows and of its name in the hint.
 HOST_COLOURS=('#8ec07c' '#fe8019' '#83a598' '#d3869b')
@@ -228,7 +250,7 @@ sync_layout() {
   while IFS=$'\t' read -r g h; do
     if ! grep -qxF -- "$g" <<<"$have"; then
       pid=$(tmx split-window -d -t "=$s:overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
-      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 2
+      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 3
       tmx select-layout -t "=$s:overview" tiled >/dev/null
     fi
   done < <(jq -r '.[] | select(.guest != "-") | [.guest, .host] | join("\t")' "$json")
@@ -237,7 +259,7 @@ sync_layout() {
     h=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .host) // ""' "$json")
     tmx set -p -t "$pid" @fleet-guest-host "$h" \; set -p -t "$pid" @fleet-guest-colour "${hcol[$h]:-#ebdbb2}" 2>/dev/null
     # A pane started by an older fleet runs that fleet's loop, which a pull does not change: restart it.
-    [ "$v" = 2 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 2
+    [ "$v" = 3 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 3
   done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
 
   # A window made before the host tags, named <host>·<repo>: renamed for its repo and tagged, whether or not
@@ -357,7 +379,7 @@ cmd_up() {
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
   pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$first")") \
     || die "could not start tmux session $s"
-  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 2
+  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 3
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" 1
   [ -n "${FLEET_NO_HINTLOOP:-}" ] || tmx run-shell -b "$(self_cmd _hintloop "$s")"
@@ -481,7 +503,7 @@ cmd__overview() {
         | "#[fg=#b8bb26]●\([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)"
           + if $m > 0 then " #[fg=#d3869b]◆\($m)" else "" end end' "$(sdir "$s")/fleet.json" 2>/dev/null)  #[fg=#928374]$ip $(date +%H:%M)" 2>/dev/null
     clear
-    printf '%s\n' "$out"
+    colour_table <<<"$out"
     sleep "${FLEET_OVERVIEW_INTERVAL:-30}"
   done
 }
@@ -535,6 +557,7 @@ main() {
     sync) if [ "${1:-}" = -t ]; then cmd_sync "${2:-}"; else cmd_sync; fi ;;
     hint) cmd_hint "$@" ;;
     _overview) cmd__overview "$@" ;;
+    _colour) colour_table ;;
     _attach) cmd__attach "$@" ;;
     _hintloop) cmd__hintloop "$@" ;;
     ls) guests ;;

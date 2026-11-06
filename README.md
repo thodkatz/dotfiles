@@ -116,7 +116,8 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last sync): `●` alive
 (green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
 `✓` done, `∅` gone (worktree removed), `·` ended early (grey).
-Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed. Your
+Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed, and
+each `status.sh` row in its glyph's colour. Your
 own panes show their command and directory; the focused pane's border is blue. The theme is gruvbox, written into
 `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
 

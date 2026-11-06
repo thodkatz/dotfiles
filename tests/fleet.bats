@@ -268,7 +268,7 @@ wait_attached() {
   pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
   "$FLEET" sync -t fleet
   [ "$(t display -p -t "$old" '#{pane_pid}')" != "$pold" ]
-  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 2 ]
+  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 3 ]
   [ "$(t display -p -t "$cur" '#{pane_pid}')" = "$pcur" ]
 }
 
@@ -283,6 +283,26 @@ wait_attached() {
     run tags
     [[ "$output" == *"e-nixed-stall|$look impl/x $live"* ]] || { echo "$live: $output"; false; }
   done
+}
+
+@test "overview colours: each status.sh row in its glyph's colour, header bold, rule and supervisor line grey" {
+  table=$'  worktree  live\n  ────────  ────\n● nixed     alive\n◆ nixed/x   blocked #3\n✗ ethaae    dead\n· am        -\nsupervisor: last tick 2m ago'
+  run "$FLEET" _colour <<<"$table"
+  [ "$status" -eq 0 ]
+  e=$'\033'
+  [ "${lines[0]}" = "$e[1m  worktree  live$e[0m" ]
+  [ "${lines[1]}" = "$e[38;2;146;131;116m  ────────  ────$e[0m" ]
+  [ "${lines[2]}" = "$e[38;2;184;187;38m● nixed     alive$e[0m" ]
+  [ "${lines[3]}" = "$e[38;2;211;134;155m◆ nixed/x   blocked #3$e[0m" ]
+  [ "${lines[4]}" = "$e[38;2;251;73;52m✗ ethaae    dead$e[0m" ]
+  [ "${lines[5]}" = "$e[38;2;146;131;116m· am        -$e[0m" ]
+  [ "${lines[6]}" = "$e[38;2;146;131;116msupervisor: last tick 2m ago$e[0m" ]
+}
+
+@test "overview colours: a line already coloured (status.sh on a tty) or not a table passes through" {
+  run "$FLEET" _colour <<<$'\033[32m● x\033[0m\nunreachable'
+  [ "${lines[0]}" = $'\033[32m● x\033[0m' ]
+  [ "${lines[1]}" = "unreachable" ]
 }
 
 @test "attach: a detach (socket still there) closes the pane (D11)" {
