@@ -658,6 +658,70 @@ mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktr
   echo "$old" > "$FLEET_STATE/fleet/hintloop.pid"
   FLEET_NO_HINTLOOP= "$FLEET" sync -t fleet
   ! kill -0 "$old" 2>/dev/null
-  for i in $(seq 50); do grep -q ' 3$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
-  grep -q ' 3$' "$FLEET_STATE/fleet/hintloop.pid"
+  for i in $(seq 50); do grep -q ' 4$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
+  grep -q ' 4$' "$FLEET_STATE/fleet/hintloop.pid"
+}
+
+@test "tick: a hop on the same socket is retagged in place, no prefix F; nothing added or closed" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  before=$(t list-panes -a -F '#{pane_id}' | sort)
+  # chain.sh's next run in the same dtach; besides it, an unrelated new session and a gone one.
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" | .prev = "e-nixed-1" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  add_row 192.168.122.51 "$NEW_ROW"
+  drop_row 192.168.122.51 e-nixed-stall
+  run "$FLEET" _tick fleet
+  [ "$status" -eq 0 ]
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
+  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
+  [[ "$output" == *'|e-nixed-stall|'* ]]
+  [[ "$output" != *'|e-nixed-2|'* ]]
+  # The hint still offers the unrelated one to prefix F.
+  [[ "$(plain < "$FLEET_STATE/fleet/hint")" == *'↻1'* ]]
+}
+
+@test "tick: an ended pane whose session handed over to a new socket is respawned in place on its successor" {
+  touch "$FLEET_FIXTURES/attach-exits"
+  "$FLEET" up
+  wait_ended
+  rm "$FLEET_FIXTURES/attach-exits"
+  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  before=$(t list-panes -a -F '#{pane_id}' | sort)
+  # next-session.sh's hop outside chain.sh: a new entry, prev the old one, in a dtach of its own.
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1c" | .prev = "e-nixed-1" | .branch = "impl/w"
+    | .continue = "dtach -a /var/tmp/agent-sessions/e-nixed-1c.sock -r winch" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  run "$FLEET" _tick fleet
+  [ "$status" -eq 0 ]
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+  run t display -p -t "$old" '#{@fleet-entry}|#{@fleet-sock}|#{@fleet-ended}|#{@fleet-branch} #{@fleet-live}'
+  [ "$output" = 'e-nixed-1c|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1c.sock||impl/w alive' ]
+  wait_attached e-nixed-1c
+  # The other ended panes have no successor: left, still ended, for prefix F.
+  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-ended}'
+  [[ "$output" == *'e-am-1|1'* ]]
+  [[ "$output" == *'e-nixed-stall|1'* ]]
+  # A row without prev (an older status.sh) is no one's successor.
+  am=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-am-1" { print $1 }')
+  jq 'map(if .entry == "e-am-1" then .entry = "e-am-2" | .continue = "dtach -a /var/tmp/agent-sessions/e-am-2.sock -r winch" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.123.51.json"
+  "$FLEET" _tick fleet
+  [ "$(t display -p -t "$am" '#{@fleet-entry}|#{@fleet-ended}')" = 'e-am-1|1' ]
+}
+
+@test "tick: follows nothing while a sync holds the lock" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  flock "$FLEET_STATE/fleet/sync.lock" sleep 3 >/dev/null 3>&- &
+  holder=$!
+  for i in $(seq 50); do ! flock -n "$FLEET_STATE/fleet/sync.lock" true && break; sleep 0.1; done
+  run "$FLEET" _tick fleet
+  [ "$status" -eq 0 ]
+  [[ "$(entries)" == *e-nixed-1* ]] && [[ "$(entries)" != *e-nixed-1b* ]]
+  kill "$holder" 2>/dev/null || true
 }

@@ -4,7 +4,8 @@
 # Window `overview` has one pane per guest running its supervisor's status.sh;
 # then one window per repo (named for it, coloured for its host) with one
 # interactive pane per session
-# running under dtach. Syncs only when asked (prefix F, `fleet sync`).
+# running under dtach. Syncs only when asked (prefix F, `fleet sync`); between
+# syncs, the hint loop follows hops in the panes it has, in place.
 # Design: docs/superpowers/specs/2026-11-05-tmux-fleet-design.md in dotfiles.
 set -uo pipefail
 
@@ -293,12 +294,57 @@ overview_layout() {
   done
 }
 
+# Follow hops in the agent panes, in place: none is moved, added or closed (that waits for prefix F). A live pane
+# whose entry is gone but whose socket is a live entry's (one chain.sh's next hop) is retagged onto it. An ended pane
+# whose entry has a successor (an attachable row whose prev is its run id) on another socket that has no pane (a hop
+# or a resume that got a new dtach) is respawned where it is, attached to it. A row without prev (an older
+# status.sh) is no one's successor. Every pane of an attachable entry gets fresh tags. The hint loop's tick runs it,
+# and so does each sync, first.
+follow_panes() {
+  local s=$1 json panes pid entry ended psock e ip sock branch live
+  json=$(sdir "$s")/fleet.json
+  SYNC_RETAGGED=0
+  declare -A bysock=() sockof=() newrow=() byprev=() epaned=() spaned=()
+  while IFS=$'\t' read -r entry _ _ ip _ branch live sock; do
+    bysock["$ip $sock"]=$entry sockof[$entry]="$ip $sock" newrow[$entry]=$branch$'\t'$live
+  done < <(attachable "$json")
+  while IFS=$'\t' read -r ip e entry; do byprev["$ip $e"]=$entry; done < <(jq -r '.[] | . as $g | select(.status == "ok")
+    | .rows[] | select((.prev // "") != "" and ((.continue // "") | startswith("dtach -a "))) | [$g.ip, .prev, .entry] | @tsv' "$json")
+  panes=$(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}' 2>/dev/null)
+  while IFS=$'\037' read -r pid entry ended psock; do
+    [ -z "$entry" ] || epaned[$entry]=1
+    [ -z "$psock" ] || spaned[$psock]=$(( ${spaned[$psock]:-0} + 1 ))
+  done <<<"$panes"
+  while IFS=$'\037' read -r pid entry ended psock; do
+    [ -n "$entry" ] && [ -n "$psock" ] || continue   # a pane made before @fleet-sock waits for a sync
+    if [ "$ended" != 1 ]; then
+      if [ -z "${newrow[$entry]:-}" ] && e=${bysock[$psock]:-} && [ -n "$e" ] && [ -z "${epaned[$e]:-}" ] &&
+        [ "${spaned[$psock]}" = 1 ]; then
+        tmx set -p -t "$pid" @fleet-entry "$e"; epaned[$e]=1 entry=$e SYNC_RETAGGED=$((SYNC_RETAGGED + 1))
+      fi
+      [ -z "${newrow[$entry]:-}" ] || tag_pane "$pid" "${newrow[$entry]%%$'\t'*}" "${newrow[$entry]#*$'\t'}"
+      continue
+    fi
+    ip=${psock%% *} e=${byprev["${psock%% *} ${entry##*/}"]:-}
+    [ -n "$e" ] && [ -z "${epaned[$e]:-}" ] && [ "${sockof[$e]}" != "$psock" ] && [ -z "${spaned[${sockof[$e]}]:-}" ] || continue
+    sock=${sockof[$e]#* }
+    # Unmarked first: an attach that ends at once marks it again.
+    tmx set -p -u -t "$pid" @fleet-ended
+    tmx respawn-pane -k -t "$pid" "$(self_cmd _attach "$ip" "$sock")" || { tmx set -p -t "$pid" @fleet-ended 1; continue; }
+    tmx set -p -t "$pid" @fleet-entry "$e" \; set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
+    tag_pane "$pid" "${newrow[$e]%%$'\t'*}" "${newrow[$e]#*$'\t'}"
+    epaned[$e]=1 spaned["$ip $sock"]=1 SYNC_RETAGGED=$((SYNC_RETAGGED + 1))
+  done <<<"$panes"
+  return 0
+}
+
 # Lay the session out from its fleet.json; see the spec's *Sync*. $2: the pane prefix F was pressed in, which
 # takes its guest's newest new session a person started (claudes -d) when it is a plain shell ssh'd into that guest.
 sync_layout() {
   local s=$1 here=${2:-} d json g pid entry ended psock cmd e host guest ip repo branch live sock row wid have h n
   d=$(sdir "$s"); json=$d/fleet.json
-  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RETAGGED=0 SYNC_RENAMED=0 SYNC_HERE=0
+  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RENAMED=0 SYNC_HERE=0
+  follow_panes "$s"   # sets SYNC_RETAGGED
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
   # socket has one pane: a second would mirror the first, scrolling included.
@@ -457,6 +503,20 @@ hint_write() {
 
 hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 
+# The hint loop's tick: rediscover, follow hops in the panes (follow_panes), rewrite the hint. Discovery runs outside
+# the sync lock, as hint --refresh's does, so that a prefix F pressed meanwhile is not turned away; following runs
+# under it, so it never races a sync's layout. A sync that holds it does the following itself.
+cmd__tick() {
+  local s=$1
+  use_session "$s" || return 0
+  discover "$(sdir "$s")/fleet.json" || return 0
+  (
+    flock -n 9 || exit 0
+    follow_panes "$s"
+  ) 9>"$(sdir "$s")/sync.lock"
+  hint_write "$s"
+}
+
 # --- commands ------------------------------------------------------------
 
 cmd_up() {
@@ -498,7 +558,7 @@ cmd_sync() {
   hint_write "$s"
   # A hint loop an older fleet started keeps that fleet's code, and its look, until it dies: replace it.
   local pidf p v; pidf=$(sdir "$s")/hintloop.pid
-  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 3 ]; then
+  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 4 ]; then
     kill "$p" 2>/dev/null; rm -f "$pidf"
     tmx run-shell -b "$(self_cmd _hintloop "$s")"
   fi
@@ -577,7 +637,9 @@ cmd_status() {
 # Pane command: attach to one session's dtach. C-] detaches (the pane closes,
 # the agent runs on); when the session itself ends or the link is lost (ssh
 # exits 255), the pane stays, marked @fleet-ended, until the next sync, which
-# closes it or, if the entry is still attachable, attaches afresh.
+# closes it or, if the entry is still attachable, attaches afresh; or, when its
+# session handed over to a successor on a new socket, until the hint loop's next
+# tick respawns it attached to that.
 cmd__attach() {
   local ip=$1 sock=$2 rc
   ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r winch"
@@ -623,17 +685,17 @@ cmd__resources() {
   done
 }
 
-# Background (run-shell -b): refresh the hint while the session lives.
+# Background (run-shell -b): while the session lives, refresh the hint and follow hops in the panes (cmd__tick).
 cmd__hintloop() {
   local s=$1 pidf p
   pidf=$(sdir "$s")/hintloop.pid
   mkdir -p "$(sdir "$s")"
   if [ -r "$pidf" ] && read -r p _ <"$pidf" && kill -0 "$p" 2>/dev/null; then return 0; fi
-  echo "$$ 3" > "$pidf"   # 3: this loop runs the fleet on disk, every FLEET_HINT_INTERVAL (20 s); sync replaces any other
+  echo "$$ 4" > "$pidf"   # 4: this loop ticks the fleet on disk, every FLEET_HINT_INTERVAL (20 s); sync replaces any other
   use_session "$s" || return 0
   while tmx has-session -t "=$s" 2>/dev/null; do
     # The fleet on disk, not this process's copy: after a pull the hint takes the new look without a restart.
-    bash -c "$(self_cmd hint -t "$s" --refresh)" >/dev/null 2>&1
+    bash -c "$(self_cmd _tick "$s")" >/dev/null 2>&1
     sleep "${FLEET_HINT_INTERVAL:-20}"
   done
   rm -f "$pidf" "$(sdir "$s")/hint"
@@ -678,6 +740,7 @@ main() {
     _colour) colour_table ;;
     _attach) cmd__attach "$@" ;;
     _hintloop) cmd__hintloop "$@" ;;
+    _tick) cmd__tick "$@" ;;
     ls) guests ;;
     status) [ $# -ge 1 ] || die "usage: fleet status GUEST"; cmd_status "$1" ;;
     doctor) cmd_doctor ;;

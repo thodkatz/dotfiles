@@ -110,14 +110,14 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | | |
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; nothing syncs on its own |
+| `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; between syncs, every 20 s, a pane follows its session's hops (hand-off, usage-limit move, resume) in place, nothing else changes on its own |
 | overview window | one row per guest: its `status.sh` table, and to its right its resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
 | `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |
 | `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
 | status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last sync): `●` alive
+Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last 20 s refresh): `●` alive
 (green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
 `✓` done, `∅` gone (worktree removed), `·` ended early (grey).
 Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed, and
