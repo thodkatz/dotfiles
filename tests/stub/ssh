@@ -23,6 +23,7 @@ case $cmd in
   'dtach -a '*)
     [ ! -e "$fx/attach-lost" ] || exit 255
     [ -e "$fx/attach-exits" ] && exit 0; exec sleep 600 ;;
+  *btop*) exec sleep 600 ;;
   'test -S '*) [ -e "$fx/sock-alive" ] ;;
   true|'command -v dtach') exit 0 ;;
   *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;

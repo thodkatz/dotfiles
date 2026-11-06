@@ -345,3 +345,13 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    their own panes, as before. A guest-side signal to the laptop's tmux, with no prefix F at all, was rejected: the
    guest can't reach it, a terminal title is overwritten by Claude Code, and ssh's source port need not survive the
    tailnet's NAT.
+
+15. **Each guest's resources beside its status** (decision 6) — `folded`. Asked by the user (2026-11-06): "a nice
+   bashtop or htop to the overview pane on the right side of the status … an overview of the resources, VM exhausted
+   or not, by checking CPU, RAM, disk". Each overview pane gets a second pane to its right (`@fleet-res-guest`)
+   running btop over ssh with only its cpu and mem boxes (mem holds the disks): btop's four boxes need 80x24, more
+   than a pane beside a status table has (checked by rendering it: "Terminal size too small" at 79x23), and those two
+   fit down to 70x20. Rendered at 200 columns, the status table runs to 110, so the resources pane is 72 wide and the
+   status gets the rest (half each on a window too narrow for that). One row per guest, built with
+   break-pane/even-vertical/join-pane: tiled pairs them only for two guests, and tmux 3.8 changed the layout
+   string's format. Sync adds them to a fleet from before them; a guest with no btop gets htop.

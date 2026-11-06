@@ -269,6 +269,30 @@ pane_guest_ip() {
   jq -er --arg h "$host" 'first(.[] | select(.guest != "-" and (.ip == $h or .guest == $h)) | .ip)' "$2"
 }
 
+# The overview window's layout: one row per guest, in pane order, its status pane on the left and its resources
+# pane on the right, 72 columns wide (btop's cpu and mem boxes need 70; the status table up to 110, so it gets the
+# rest, or half on a narrow window). tiled pairs them only for two guests, and tmux 3.8 changed the layout string's
+# format, so it is built with commands: the resources panes out, the status panes stacked, each one joined back
+# beside its own. tiled when the window holds a pane of neither kind (one made by hand).
+overview_layout() {
+  local w="=$1:overview" W pid g r l
+  declare -A resof=()
+  local st=()
+  while IFS=$'\037' read -r pid g r; do   # not a tab: read collapses a run of them, and one field is empty
+    if [ -n "$g" ]; then st+=("$pid $g"); elif [ -n "$r" ]; then resof[$r]=$pid
+    else tmx select-layout -t "$w" tiled >/dev/null; return; fi
+  done < <(tmx list-panes -t "$w" -F $'#{pane_id}\037#{@fleet-guest}\037#{@fleet-res-guest}')
+  [ ${#st[@]} -gt 0 ] || return 0
+  W=$(tmx display -p -t "$w" '#{window_width}')
+  l=72; [ $(( W - 1 - l )) -ge 100 ] || l=$(( (W - 1) / 2 ))
+  for r in "${resof[@]}"; do tmx break-pane -d -s "$r" >/dev/null; done
+  tmx select-layout -t "$w" even-vertical >/dev/null
+  for pid in "${st[@]}"; do
+    r=${resof[${pid#* }]:-}
+    [ -z "$r" ] || tmx join-pane -h -d -l "$l" -s "$r" -t "${pid%% *}" >/dev/null
+  done
+}
+
 # Lay the session out from its fleet.json; see the spec's *Sync*. $2: the pane prefix F was pressed in, which
 # takes its guest's newest new session a person started (claudes -d) when it is a plain shell ssh'd into that guest.
 sync_layout() {
@@ -294,8 +318,18 @@ sync_layout() {
       tmx select-layout -t "=$s:overview" tiled >/dev/null
     fi
   done < <(jq -r '.[] | select(.guest != "-") | [.guest, .host] | join("\t")' "$json")
+  # Beside each guest's status, to its right, its resources: btop over ssh (CPU, memory, disks), so a VM running
+  # out of one shows. On every sync, so a fleet from before them gets them too; then one row per guest.
+  local res added=0
+  res=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-res-guest}' 2>/dev/null)
+  while IFS=$'\t' read -r pid g; do
+    [ -n "$g" ] && ! grep -qxF -- "$g" <<<"$res" || continue
+    pid=$(tmx split-window -h -d -t "$pid" -P -F '#{pane_id}' "$(self_cmd _resources "$s" "$g")") || continue
+    tmx set -p -t "$pid" @fleet-res-guest "$g"; added=1
+  done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}' 2>/dev/null)
+  [ "$added" = 0 ] || overview_layout "$s"
   while IFS=$'\t' read -r pid g v; do
-    [ -n "$g" ] || continue
+    [ -n "$g" ] || { g=$(tmx display -p -t "$pid" '#{@fleet-res-guest}') && [ -n "$g" ] || continue; v=4; }
     h=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .host) // ""' "$json")
     tmx set -p -t "$pid" @fleet-guest-host "$h" \; set -p -t "$pid" @fleet-guest-colour "${hcol[$h]:-#ebdbb2}" 2>/dev/null
     # A pane started by an older fleet runs that fleet's loop, which a pull does not change: restart it.
@@ -573,6 +607,22 @@ cmd__overview() {
   done
 }
 
+# Pane command: one guest's resources, btop over ssh (htop where a guest has no btop): CPU, memory and disks.
+# Again after it exits or the link drops.
+cmd__resources() {
+  local s=$1 g=$2 ip
+  while :; do
+    ip=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .ip) // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
+    if [ -n "$ip" ] && [ "$ip" != - ]; then
+      # btop's cpu and mem (with disks) boxes only: all four need 80x24, more than a pane has beside a status
+      ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" 'if command -v btop >/dev/null; then c=${TMPDIR:-/tmp}/fleet-btop.conf
+        btop --default-config | sed "s/^shown_boxes = .*/shown_boxes = \"cpu mem\"/" > "$c" && exec btop -c "$c"; fi; exec htop'
+    fi
+    clear; echo "[fleet] $g's resources: no link; again in 15 s"
+    sleep 15
+  done
+}
+
 # Background (run-shell -b): refresh the hint while the session lives.
 cmd__hintloop() {
   local s=$1 pidf p
@@ -624,6 +674,7 @@ main() {
     sync) cmd_sync "$@" ;;
     hint) cmd_hint "$@" ;;
     _overview) cmd__overview "$@" ;;
+    _resources) cmd__resources "$@" ;;
     _colour) colour_table ;;
     _attach) cmd__attach "$@" ;;
     _hintloop) cmd__hintloop "$@" ;;

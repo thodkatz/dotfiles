@@ -105,7 +105,32 @@ wait_attached() {
   run t list-windows -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}'
   [ "$output" = $'overview||\nnixed|nixos|#8ec07c\nagent-methodology|thinkcentre|#fe8019' ]
   run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
-  [ "$output" = $'agentvm-repos\nagentvm-thinkrepos' ]
+  [ "$(grep . <<<"$output")" = $'agentvm-repos\nagentvm-thinkrepos' ]
+}
+
+@test "up: each guest's status, then its resources (btop over ssh) to its right" {
+  "$FLEET" up
+  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-res-guest}|#{@fleet-guest-host}|#{pane_left},#{pane_top}'
+  [ "${#lines[@]}" -eq 4 ]
+  [[ "${lines[0]}" == 'agentvm-repos||nixos|0,0' ]]
+  [[ "${lines[1]}" == '|agentvm-repos|nixos|'*',0' ]] && [[ "${lines[1]}" != *'|0,0' ]]
+  [[ "${lines[2]}" == 'agentvm-thinkrepos||thinkcentre|0,'* ]]
+  [[ "${lines[3]}" == '|agentvm-thinkrepos|thinkcentre|'* ]]
+  # fleet's own layout, not tiled's halves: btop 72 columns, the status table the rest
+  run t list-panes -t =fleet:overview -F '#{pane_width}'
+  [ "$output" = $'127\n72\n127\n72' ]
+  for i in $(seq 50); do grep -q 'agentvm@192.168.123.51 .*btop' "$FLEET_FIXTURES/ssh.log" && break; sleep 0.1; done
+  grep -q "ssh -t .*agentvm@192.168.122.51 .*btop" "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "sync: a fleet from before the resource panes gets one beside each guest's status, once" {
+  "$FLEET" up
+  t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-res-guest}' | awk '$2 != "" { print $1 }' | while read -r p; do t kill-pane -t "$p"; done
+  [ "$(t list-panes -t =fleet:overview -F x | wc -l)" -eq 2 ]
+  "$FLEET" sync -t fleet
+  "$FLEET" sync -t fleet
+  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-res-guest}'
+  [ "$output" = $'agentvm-repos|\n|agentvm-repos\nagentvm-thinkrepos|\n|agentvm-thinkrepos' ]
 }
 
 @test "up: only dtach rows get panes, tagged and titled (D7, D15)" {
@@ -333,8 +358,8 @@ mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktr
 
 @test "sync: an overview pane an older fleet started is restarted, a current one is left running" {
   "$FLEET" up
-  old=$(t list-panes -t =fleet:overview -F '#{pane_id}' | head -1)
-  cur=$(t list-panes -t =fleet:overview -F '#{pane_id}' | tail -1)
+  old=$(t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-guest}' | awk '$2 != "" { print $1 }' | head -1)
+  cur=$(t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-guest}' | awk '$2 != "" { print $1 }' | tail -1)
   t set -pu -t "$old" @fleet-overview
   pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
   "$FLEET" sync -t fleet
