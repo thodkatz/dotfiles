@@ -640,6 +640,24 @@ mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktr
   [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
 }
 
+@test "hint loop: a HUP or TERM ends it with status 0, so run-shell -b prints no 'terminated by signal' in a pane" {
+  "$FLEET" up
+  for sig in HUP TERM; do
+    FLEET_HINT_INTERVAL=600 "$FLEET" _hintloop fleet & p=$!
+    for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
+    kill -s "$sig" "$p"
+    st=0; wait "$p" || st=$?
+    [ "$st" -eq 0 ]
+    [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
+  done
+  # A loop replaced by sync leaves its successor's pid file alone.
+  FLEET_HINT_INTERVAL=600 "$FLEET" _hintloop fleet & p=$!
+  for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
+  echo "999999 5" > "$FLEET_STATE/fleet/hintloop.pid"
+  kill "$p"; wait "$p" || true
+  [ "$(cat "$FLEET_STATE/fleet/hintloop.pid")" = "999999 5" ]
+}
+
 @test "tmux.conf: resurrect's post-save hook drops fleet's sessions from a save" {
   t -f "$ROOT/tmux/dot-config/tmux/tmux.conf" start-server \; show -gv @resurrect-hook-post-save-layout > "$BATS_TEST_TMPDIR/hook"
   save=$BATS_TEST_TMPDIR/tmux_resurrect_x.txt
@@ -658,8 +676,8 @@ mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktr
   echo "$old" > "$FLEET_STATE/fleet/hintloop.pid"
   FLEET_NO_HINTLOOP= "$FLEET" sync -t fleet
   ! kill -0 "$old" 2>/dev/null
-  for i in $(seq 50); do grep -q ' 4$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
-  grep -q ' 4$' "$FLEET_STATE/fleet/hintloop.pid"
+  for i in $(seq 50); do grep -q ' 5$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
+  grep -q ' 5$' "$FLEET_STATE/fleet/hintloop.pid"
 }
 
 @test "tick: a hop on the same socket is retagged in place, no prefix F; nothing added or closed" {

@@ -558,7 +558,7 @@ cmd_sync() {
   hint_write "$s"
   # A hint loop an older fleet started keeps that fleet's code, and its look, until it dies: replace it.
   local pidf p v; pidf=$(sdir "$s")/hintloop.pid
-  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 4 ]; then
+  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 5 ]; then
     kill "$p" 2>/dev/null; rm -f "$pidf"
     tmx run-shell -b "$(self_cmd _hintloop "$s")"
   fi
@@ -691,12 +691,18 @@ cmd__hintloop() {
   pidf=$(sdir "$s")/hintloop.pid
   mkdir -p "$(sdir "$s")"
   if [ -r "$pidf" ] && read -r p _ <"$pidf" && kill -0 "$p" 2>/dev/null; then return 0; fi
-  echo "$$ 4" > "$pidf"   # 4: this loop ticks the fleet on disk, every FLEET_HINT_INTERVAL (20 s); sync replaces any other
+  echo "$$ 5" > "$pidf"   # 5: this loop ticks the fleet on disk, every FLEET_HINT_INTERVAL (20 s); sync replaces any other
+  # Killed (sync's replace, a HUP), exit 0: run-shell -b prints a job that dies of a signal into the active pane.
+  # The pid file only if still ours: a successor sync started may have written its own.
+  local slp=''
+  trap '[ -z "$slp" ] || kill "$slp" 2>/dev/null; read -r p _ <"$pidf" 2>/dev/null && [ "$p" = $$ ] && rm -f "$pidf"; exit 0' HUP TERM INT
   use_session "$s" || return 0
   while tmx has-session -t "=$s" 2>/dev/null; do
     # The fleet on disk, not this process's copy: after a pull the hint takes the new look without a restart.
     bash -c "$(self_cmd _tick "$s")" >/dev/null 2>&1
-    sleep "${FLEET_HINT_INTERVAL:-20}"
+    # In the background and waited for, so a signal runs the trap now, not after the sleep.
+    sleep "${FLEET_HINT_INTERVAL:-20}" & slp=$!
+    wait "$slp"; slp=''
   done
   rm -f "$pidf" "$(sdir "$s")/hint"
 }
