@@ -268,7 +268,7 @@ wait_attached() {
   pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
   "$FLEET" sync -t fleet
   [ "$(t display -p -t "$old" '#{pane_pid}')" != "$pold" ]
-  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 3 ]
+  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 4 ]
   [ "$(t display -p -t "$cur" '#{pane_pid}')" = "$pcur" ]
 }
 
@@ -562,6 +562,6 @@ wait_attached() {
   echo "$old" > "$FLEET_STATE/fleet/hintloop.pid"
   FLEET_NO_HINTLOOP= "$FLEET" sync -t fleet
   ! kill -0 "$old" 2>/dev/null
-  for i in $(seq 50); do grep -q ' 2$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
-  grep -q ' 2$' "$FLEET_STATE/fleet/hintloop.pid"
+  for i in $(seq 50); do grep -q ' 3$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
+  grep -q ' 3$' "$FLEET_STATE/fleet/hintloop.pid"
 }

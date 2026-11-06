@@ -269,7 +269,7 @@ sync_layout() {
   while IFS=$'\t' read -r g h; do
     if ! grep -qxF -- "$g" <<<"$have"; then
       pid=$(tmx split-window -d -t "=$s:overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
-      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 3
+      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 4
       tmx select-layout -t "=$s:overview" tiled >/dev/null
     fi
   done < <(jq -r '.[] | select(.guest != "-") | [.guest, .host] | join("\t")' "$json")
@@ -278,7 +278,7 @@ sync_layout() {
     h=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .host) // ""' "$json")
     tmx set -p -t "$pid" @fleet-guest-host "$h" \; set -p -t "$pid" @fleet-guest-colour "${hcol[$h]:-#ebdbb2}" 2>/dev/null
     # A pane started by an older fleet runs that fleet's loop, which a pull does not change: restart it.
-    [ "$v" = 3 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 3
+    [ "$v" = 4 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 4
   done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
 
   # A window made before the host tags, named <host>·<repo>: renamed for its repo and tagged, whether or not
@@ -398,7 +398,7 @@ cmd_up() {
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
   pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$first")") \
     || die "could not start tmux session $s"
-  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 3
+  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 4
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" 1
   [ -n "${FLEET_NO_HINTLOOP:-}" ] || tmx run-shell -b "$(self_cmd _hintloop "$s")"
@@ -419,7 +419,7 @@ cmd_sync() {
   hint_write "$s"
   # A hint loop an older fleet started keeps that fleet's code, and its look, until it dies: replace it.
   local pidf p v; pidf=$(sdir "$s")/hintloop.pid
-  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 2 ]; then
+  if [ -z "${FLEET_NO_HINTLOOP:-}" ] && [ -r "$pidf" ] && read -r p v <"$pidf" && [ "${v:-}" != 3 ]; then
     kill "$p" 2>/dev/null; rm -f "$pidf"
     tmx run-shell -b "$(self_cmd _hintloop "$s")"
   fi
@@ -533,7 +533,7 @@ cmd__hintloop() {
   pidf=$(sdir "$s")/hintloop.pid
   mkdir -p "$(sdir "$s")"
   if [ -r "$pidf" ] && read -r p _ <"$pidf" && kill -0 "$p" 2>/dev/null; then return 0; fi
-  echo "$$ 2" > "$pidf"   # 2: this loop runs the fleet on disk; sync replaces one without it
+  echo "$$ 3" > "$pidf"   # 3: this loop runs the fleet on disk, every FLEET_HINT_INTERVAL (20 s); sync replaces any other
   use_session "$s" || return 0
   while tmx has-session -t "=$s" 2>/dev/null; do
     # The fleet on disk, not this process's copy: after a pull the hint takes the new look without a restart.

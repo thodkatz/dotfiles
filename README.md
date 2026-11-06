@@ -68,7 +68,9 @@ cd ~/repos/dotfiles && git pull
 `prefix r` restyles everything already open; `prefix F` then brings fleet's session forward: it renames tabs from
 an older fleet (`nixos·nixed` becomes `nixed`), retags agent panes (until it runs, their borders show the bare
 entry id), and restarts the overview panes and the hint loop an older fleet started, since a pull changes the file,
-not the processes already running it. If a reload leaves stale styling behind, `tmux kill-server` starts clean;
+not the processes already running it. (That restart keys on a version stamp, `@fleet-overview` on each
+overview pane and the second field of `hintloop.pid`: a change to what either loop does, or how often, bumps its
+stamp in `fleet`, or prefix F leaves the old loop running.) If a reload leaves stale styling behind, `tmux kill-server` starts clean;
 resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
