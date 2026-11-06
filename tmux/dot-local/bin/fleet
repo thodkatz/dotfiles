@@ -13,6 +13,16 @@ GUEST_USER=${AGENTVM_GUEST_USER:-agentvm}
 STATE=${FLEET_STATE:-${XDG_RUNTIME_DIR:-/tmp}/fleet-$UID}
 SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5)
 GUEST_SSH_OPTS=()   # set by guest_ssh_opts, once LOCAL is known
+# The probes' and discovery's ssh share one connection per destination, kept
+# FLEET_SSH_PERSIST (10m) after the last: a sync or a refresh then pays no
+# handshake. Not the attach panes, which outlive any master and must not die
+# with it. Off with FLEET_SSH_MUX=0, or when the socket's path would pass the
+# 108 bytes a unix socket allows (%C is 40).
+MUX_OPTS=()
+if [ "${FLEET_SSH_MUX:-1}" != 0 ] && [ $(( ${#STATE} + 45 )) -lt 108 ]; then
+  MUX_OPTS=(-o ControlMaster=auto -o "ControlPath=$STATE/ssh/%C" -o "ControlPersist=${FLEET_SSH_PERSIST:-10m}")
+fi
+mux_dir() { [ ${#MUX_OPTS[@]} = 0 ] || { mkdir -p "$STATE/ssh" && chmod 700 "$STATE/ssh"; }; }
 LOCAL=0
 
 die() { echo "fleet: $*" >&2; exit 1; }
@@ -59,24 +69,33 @@ hosts_file() { echo "${FLEET_HOSTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/fleet
 # projects.json on stdin -> "host guest ip" lines.
 projects_lines() { jq -r --arg h "$1" 'to_entries[] | "\($h) \(.value.vmName) \(.value.ip)"' 2>/dev/null; }
 
-# Every guest, one "host guest ip" line each. A host whose projects.json can't
-# be read gives "host - -".
+# Every guest, one "host guest ip" line each, in the hosts file's order. A host
+# whose projects.json can't be read gives "host - -". The hosts are read at
+# once: one after another, a host that is down held up every later one.
 guests() {
   if [ "$LOCAL" = 1 ]; then
     projects_lines "$(local_host)" < "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json}"
     return
   fi
-  local f dest out
+  local f dest out tmp i=0
   f=$(hosts_file)
   [ -r "$f" ] || die "no hosts file $f (one ssh destination per line, e.g. theo@nixos), or use --local"
+  mux_dir
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fleet-guests.XXXXXX") || return 1
   while read -r dest; do
     case $dest in ''|'#'*) continue ;; esac
-    if out=$(ssh "${SSH_OPTS[@]}" "$dest" cat /etc/agentvm/projects.json </dev/null 2>/dev/null) && [ -n "$out" ]; then
-      projects_lines "${dest#*@}" <<<"$out"
-    else
-      echo "${dest#*@} - -"
-    fi
+    i=$((i + 1))
+    (
+      if out=$(ssh "${MUX_OPTS[@]}" "${SSH_OPTS[@]}" "$dest" cat /etc/agentvm/projects.json </dev/null 2>/dev/null) && [ -n "$out" ]; then
+        projects_lines "${dest#*@}" <<<"$out"
+      else
+        echo "${dest#*@} - -"
+      fi > "$tmp/$(printf %04d "$i")"
+    ) &
   done < "$f"
+  wait
+  cat "$tmp"/* 2>/dev/null
+  rm -rf "$tmp"
 }
 
 # The script a guest runs (`bash -s -- json|table`): find the agent-supervise
@@ -108,7 +127,7 @@ EOF
 }
 
 # timeout: a hung status.sh must not hold up a sync.
-probe() { probe_script | timeout "${FLEET_PROBE_TIMEOUT:-30}" ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
+probe() { mux_dir; probe_script | timeout "${FLEET_PROBE_TIMEOUT:-15}" ssh "${MUX_OPTS[@]}" "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
 
 # A guest's status.sh table, or why there is none.
 status_of() {
@@ -504,7 +523,7 @@ cmd__overview() {
           + if $m > 0 then " #[fg=#d3869b]◆\($m)" else "" end end' "$(sdir "$s")/fleet.json" 2>/dev/null)  #[fg=#928374]$ip $(date +%H:%M)" 2>/dev/null
     clear
     colour_table <<<"$out"
-    sleep "${FLEET_OVERVIEW_INTERVAL:-30}"
+    sleep "${FLEET_OVERVIEW_INTERVAL:-15}"
   done
 }
 
@@ -519,7 +538,7 @@ cmd__hintloop() {
   while tmx has-session -t "=$s" 2>/dev/null; do
     # The fleet on disk, not this process's copy: after a pull the hint takes the new look without a restart.
     bash -c "$(self_cmd hint -t "$s" --refresh)" >/dev/null 2>&1
-    sleep "${FLEET_HINT_INTERVAL:-60}"
+    sleep "${FLEET_HINT_INTERVAL:-20}"
   done
   rm -f "$pidf" "$(sdir "$s")/hint"
 }

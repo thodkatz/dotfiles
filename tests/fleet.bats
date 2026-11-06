@@ -429,6 +429,31 @@ wait_attached() {
   ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
 }
 
+@test "ssh: probes and discovery share a connection; attach panes don't" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  grep -q "ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m -o BatchMode=yes .* agentvm@192.168.122.51 bash -s -- json" "$FLEET_FIXTURES/ssh.log"
+  grep -q "ControlMaster=auto .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
+  ! grep 'dtach -a' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
+  [ "$(stat -c %a "$FLEET_STATE/ssh")" = 700 ]
+}
+
+@test "ssh: no shared connection with FLEET_SSH_MUX=0, or a socket path past 108 bytes" {
+  FLEET_SSH_MUX=0 "$FLEET" status agentvm-repos
+  ! grep -q ControlMaster "$FLEET_FIXTURES/ssh.log"
+  FLEET_STATE=$BATS_TEST_TMPDIR/$(printf 'x%.0s' $(seq 80)) "$FLEET" status agentvm-repos
+  ! grep -q ControlMaster "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "discovery: reads the hosts at once, in the hosts file's order" {
+  "$FLEET" up
+  touch "$FLEET_FIXTURES/slow-nixos" "$FLEET_FIXTURES/slow-thinkcentre"
+  start=$(date +%s)
+  "$FLEET" hint -t fleet --refresh >/dev/null
+  [ $(( $(date +%s) - start )) -lt 4 ]
+  [ "$(jq -r '(map(.host) | unique == ["nixos", "thinkcentre"]) and .[0].host == "nixos"' "$FLEET_STATE/fleet/fleet.json")" = true ]
+}
+
 @test "ssh: AGENTVM_KEY is the guests' identity, in panes too" {
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up

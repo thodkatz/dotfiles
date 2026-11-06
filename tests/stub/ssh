@@ -10,7 +10,7 @@ dest=${1#*@}; shift
 cmd="$*"
 [ ! -e "$fx/fail-$dest" ] || { echo "ssh: connect to host $dest port 22: Connection timed out" >&2; exit 255; }
 case $cmd in
-  'cat /etc/agentvm/projects.json') cat "$fx/projects-$dest.json" ;;
+  'cat /etc/agentvm/projects.json') [ ! -e "$fx/slow-$dest" ] || sleep 2; cat "$fx/projects-$dest.json" ;;
   'bash -s -- json'|'bash -s -- table')
     cat >/dev/null
     [ ! -e "$fx/hang-$dest" ] || exec sleep 600
