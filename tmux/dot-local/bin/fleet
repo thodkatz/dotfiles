@@ -2,9 +2,8 @@
 # fleet: one tmux session showing every agent session on the microVM guests of
 # the hosts in ~/.config/fleet/hosts (or, with --local, of this host alone).
 # Window `overview` has one pane per guest running its supervisor's status.sh;
-# then one window per repo (named for it, coloured for its host) with one
-# interactive pane per session
-# running under dtach. Syncs only when asked (prefix F, `fleet sync`); between
+# then one window per session running under dtach (named for its repo,
+# coloured for its host), its interactive pane attached over ssh. Syncs only when asked (prefix F, `fleet sync`); between
 # syncs, the hint loop follows hops in the panes it has, in place.
 # Design: docs/superpowers/specs/2026-11-05-tmux-fleet-design.md in dotfiles.
 set -uo pipefail
@@ -343,7 +342,7 @@ follow_panes() {
 sync_layout() {
   local s=$1 here=${2:-} d json g pid entry ended psock cmd e host guest ip repo branch live sock row wid have h n
   d=$(sdir "$s"); json=$d/fleet.json
-  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RENAMED=0 SYNC_HERE=0
+  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RENAMED=0 SYNC_HERE=0 SYNC_MOVED=0
   follow_panes "$s"   # sets SYNC_RETAGGED
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
@@ -448,25 +447,41 @@ sync_layout() {
       | [(.started // "0" | tostring), .entry, (.continue | split(" ")[2])] | @tsv' "$json" | sort -t $'\t' -k1,1nr | cut -f 2-)
   fi
 
-  # A pane for each attachable entry that has none, on a socket that has none, by host then repo.
+  # A window for each attachable entry that has no pane, on a socket that has none, by host then repo: named for its
+  # repo and tagged with its host, right after that host's last window for the repo, so a repo's sessions sit together.
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
     [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
     sockpaned["$ip $sock"]=1
-    pid=''
-    # Its window: tagged with its host and named for its repo (one from before the tags was renamed above).
     wid=$(tmx list-windows -t "=$s" -F $'#{window_id}\t#{@fleet-host}\t#{window_name}' |
       awk -F '\t' -v h="$host" -v r="$repo" '$2 == h && $3 == r { id = $1 } END { print id }')
-    if [ -n "$wid" ] && pid=$(tmx split-window -d -t "$wid" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")" 2>/dev/null); then
-      tmx select-layout -t "$wid" tiled >/dev/null
+    if [ -n "$wid" ]; then
+      pid=$(tmx new-window -d -a -t "$wid" -n "$repo" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
     else
       pid=$(tmx new-window -d -t "=$s:" -n "$repo" -P -F '#{pane_id}' "$(self_cmd _attach "$ip" "$sock")") || continue
-      tmx set -w -t "$pid" @fleet-host "$host" \; set -w -t "$pid" @fleet-host-colour "${hcol[$host]:-}"
     fi
+    tmx set -w -t "$pid" @fleet-host "$host" \; set -w -t "$pid" @fleet-host-colour "${hcol[$host]:-}"
     SYNC_ADDED=$((SYNC_ADDED + 1))
     tmx set -p -t "$pid" @fleet-entry "$entry" 2>/dev/null
     tag_pane "$pid" "$branch" "$live"
     tmx set -p -t "$pid" @fleet-sock "$ip $sock" 2>/dev/null
   done < <(attachable "$json" | sort -t $'\t' -k2,2 -k5,5)
+  split_windows "$s"
+}
+
+# One agent pane per window: a window from before (a repo's sessions tiled in one) keeps its first agent pane, and
+# each other one moves to a window of its own right after it, with its name and host tags. A pane that isn't an
+# agent's (a shell opened by hand) stays where it is.
+split_windows() {
+  local s=$1 wid pid n h c prev='' dst='' new
+  while IFS=$'\037' read -r wid pid n h c; do
+    # the window's first agent pane stays; the others go after it, in pane order
+    if [ "$wid" != "$prev" ]; then prev=$wid dst=$wid; continue; fi
+    new=$(tmx break-pane -d -a -s "$pid" -t "$dst" -n "$n" -P -F '#{window_id}') || continue
+    dst=$new
+    tmx set -w -t "$new" @fleet-host "$h" \; set -w -t "$new" @fleet-host-colour "$c"
+    SYNC_MOVED=$((SYNC_MOVED + 1))
+  done < <(tmx list-panes -s -t "=$s" -F $'#{window_id}\037#{pane_id}\037#{window_name}\037#{@fleet-host}\037#{@fleet-host-colour}\037#{@fleet-entry}' |
+    awk -F '\037' '$6 != ""' | cut -d $'\037' -f 1-5)
 }
 
 # --- hint ----------------------------------------------------------------
@@ -569,6 +584,7 @@ cmd_sync() {
   [ "$SYNC_CLOSED" = 0 ] || did+=("$SYNC_CLOSED closed")
   [ "$SYNC_RETAGGED" = 0 ] || did+=("$SYNC_RETAGGED followed a hop")
   [ "$SYNC_RENAMED" = 0 ] || did+=("$SYNC_RENAMED renamed")
+  [ "$SYNC_MOVED" = 0 ] || did+=("$SYNC_MOVED moved to a window of its own")
   if [ ${#did[@]} = 0 ]; then echo "fleet: synced $s, nothing to change"
   else local line; printf -v line '%s, ' "${did[@]}"; echo "fleet: synced $s: ${line%, }"; fi
 }

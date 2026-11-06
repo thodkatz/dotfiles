@@ -15,8 +15,8 @@ here).
 
 **Decision.** This repo becomes the single source of the tmux config, with plugins (sessionx,
 extrakto, yank, resurrect, continuum) and its own gruvbox theme, and gains a bash tool, `fleet`, that builds one tmux session on the
-laptop: window 1 is an overview of every guest's `status.sh`, then one window per repo (coloured for its host) with one
-interactive pane per attachable agent session (`ssh -t` + `dtach -a`). It discovers hosts' guests live from
+laptop: window 1 is an overview of every guest's `status.sh`, then one window per attachable agent session (named
+for its repo, coloured for its host) holding its interactive pane (`ssh -t` + `dtach -a`). It discovers hosts' guests live from
 `/etc/agentvm/projects.json`, reads each guest's sessions from the supervisor's own `status.sh --json`, syncs on
 a key (never on its own), and shows a cached status-bar hint when the layout is out of date. The same tool runs
 on a host as `fleet --local`, for that host's guests only. nixed stops carrying its own copy: home-manager links
@@ -32,7 +32,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 3 | nixed drops `programs.tmux` (it writes its own `tmux.conf`, which would clash with the link): `tmux`, `jq`, `fzf` go in `home.packages`; `tmux.conf` and `fleet` are `mkOutOfStoreSymlink`s into `~/repos/dotfiles`; `plugins.tmux` is generated with one `run-shell` per plugin from `pkgs.tmuxPlugins` | *Where things live* | In the VM: `grep -n 'programs.tmux' modules/home.nix` prints nothing. On `nixos` after switch: `readlink ~/.config/tmux/tmux.conf` points into `~/repos/dotfiles`; `grep -c '^run-shell' ~/.config/tmux/plugins.tmux` prints `6`; `tmux list-keys \| grep -E 'sessionx\|extrakto'` shows both |
 | 4 | `fleet` discovers hosts from `~/.config/fleet/hosts` and each host's guests from `ssh theo@<host> cat /etc/agentvm/projects.json`; `--local` reads this machine's file and no hosts list | *Discovery* | bats: with a stub `ssh` serving two hosts' `projects.json`, `fleet ls` prints one line per guest with its host; with `--local` and `AGENTVM_PROJECTS=<fixture>`, only that file's guests |
 | 5 | Each guest's sessions come from the `status.sh` and `AGENT_SUPERVISE_REPOS` its `agent-supervise` user unit names (`systemctl --user show -p ExecStart -p Environment`); a guest without the unit is shown as `no supervisor` | *Discovery* | bats: the stub returns a unit with `ExecStart=/workspace/agent-methodology/shared/claude/supervise.sh`; `fleet` runs `…/status.sh --json --no-forge` with that `AGENT_SUPERVISE_REPOS`; a stub with no unit gives the `no supervisor` line and exit 0 |
-| 6 | Session `fleet` (`fleet-<host>` under `--local`): window 1 `overview` with one pane per guest, refreshing `fleet status <guest>` every 15 s, each row in its glyph's colour, its border naming the guest and its host (Clarifications 11, 13); then one window per repo that has at least one attachable session, named for the repo and tagged with its host (Clarification 10) | *Layout* | bats on `tmux -L fleet-test`: from the fixtures, `list-windows -F '#W|#{@fleet-host}'` prints `overview|`, `nixed|nixos`, `agent-methodology|thinkcentre` in that order; `overview` has one pane per guest |
+| 6 | Session `fleet` (`fleet-<host>` under `--local`): window 1 `overview` with one pane per guest, refreshing `fleet status <guest>` every 15 s, each row in its glyph's colour, its border naming the guest and its host (Clarifications 11, 13); then one window per attachable session, named for its repo and tagged with its host (Clarification 10), ordered by host then repo, a repo's windows side by side (Clarification 17) | *Layout* | bats on `tmux -L fleet-test`: from the fixtures, `list-windows -F '#W|#{@fleet-host}|#{window_panes}'` prints `overview|`, `nixed|nixos|1`, `nixed|nixos|1`, `agent-methodology|thinkcentre|1` in that order; `overview` has one pane per guest; a session a later sync adds goes right after its repo's last window; an older fleet's tiled window is broken up into one window per session, a shell opened in it staying |
 | 7 | A session is attachable when its `continue` starts with `dtach -a`; it gets one pane running `ssh -t agentvm@<ip> dtach -a <sock> -e '^]' -r winch`, tagged `@fleet-entry=<entry>` and with its border's `@fleet-glyph`, `@fleet-colour`, `@fleet-branch`, `@fleet-live` (Clarification 10), retagged on each sync; every other row (own terminal, blocked, stopped) is only an overview row | *Layout* | bats: three rows (one `dtach -a`, one empty `continue`, one blocked) give exactly one pane, whose `#{@fleet-entry}` and `#{@fleet-branch}` match the first row (Clarification 1) |
 | 8 | Sync is explicit (`prefix F` or `fleet sync`) and idempotent: it adds a pane for each attachable entry whose socket has none, closes every tagged pane whose attach has exited and every second pane on one socket, retags a live one whose entry is now blocked or stopped, never touches an untagged pane but the shell pane `prefix F` was pressed in, which attaches in place to the session a person started on its guest (Clarification 14), and prints what it did; between syncs, the hint loop only follows hops in the panes there are, in place (Clarification 16) | *Sync* | bats: a second sync on unchanged fixtures leaves `list-panes -a -F '#{pane_id}'` identical; adding one entry adds one pane; removing one closes it; an ended pane of a blocked entry is closed; of two live panes on one socket one is left; a pane made by hand in a fleet window survives both; `sync` prints `fleet: synced <s>, nothing to change` or what changed |
 | 9 | One unreachable host or guest never fails a sync: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet sync` exits 0, the other guest's panes exist, and `fleet status <failed>` prints `unreachable` |
@@ -46,7 +46,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 ## Early output
 
 The user's own fleet, on the laptop, after slice 2: `fleet` started with both hosts live, a screenshot or a
-`tmux capture-pane` of the overview and of one repo window with at least one agent attached. The user
+`tmux capture-pane` of the overview and of one agent window with its session attached. The user
 judges whether the overview answers "what is running, what needs me" at a glance and whether agent panes are
 distinguishable (decision 12). Slice 1 has its own smaller sample: the restyled bar and borders on the laptop.
 
@@ -116,11 +116,14 @@ Session `fleet`, or `fleet-<host>` under `--local`.
   the host, the guest's `●N ◆M` (as the hint's) and its ip and last refresh (pane options `@fleet-guest`,
   `@fleet-guest-host`, `@fleet-guest-colour`, set by each sync, and `@fleet-summary`, set by the loop; not
   `@fleet-host`, which as a pane option would shadow the window's) (Clarification 11).
-- One window per host and repo (repo is the basename of the row's `repo`) with at least one attachable row,
-  ordered by host then repo; panes tiled. It is named for the repo and tagged `@fleet-host` and
+- One window per attachable row, ordered by host then repo (repo is the basename of the row's `repo`), so a
+  repo's windows sit side by side; a session a later sync adds opens right after that host's last window for its
+  repo (a repo new to the session, at the end). It is named for the repo and tagged `@fleet-host` and
   `@fleet-host-colour` (the host's place among fleet.json's sorted hosts picks it from aqua, orange, blue,
   purple), which the tab is drawn in. A window made before the tags, named `<host>·<repo>`, is renamed and
-  tagged by the next sync, whether or not it adds a pane there (Clarification 11).
+  tagged by the next sync, whether or not it adds a pane there (Clarification 11). A window an older fleet tiled
+  several sessions in keeps its first agent pane; each other one moves to a window of its own right after it, in
+  pane order, with the same name and tags, and a pane that isn't an agent's stays where it is (Clarification 17).
 - Each attachable row (`continue` starts with `dtach -a`) is one pane: `ssh -t agentvm@<ip>` running the
   `continue` command with `-e '^]'` added, so dtach's detach key is `C-]` and `C-\` stays free. Pane options:
   `@fleet-entry` (the row's `entry`), `@fleet-glyph` and `@fleet-colour` (its `live` value's, *Plugins, keys,
@@ -133,8 +136,10 @@ Session `fleet`, or `fleet-<host>` under `--local`.
 `fleet sync` (bound to `prefix F`), and once on `fleet` start:
 
 1. Discover (above).
-2. For each attachable entry with no tagged pane: add the pane to its window, creating the window if missing;
-   `select-layout tiled` on that window only.
+2. For each attachable entry with no tagged pane: open a window for it, right after that host's last window for
+   its repo (*Layout*). Last, after step 4's exception, break an older fleet's tiled window apart: each agent pane
+   but its first to a window of its own (`break-pane -d -a`, so no pane restarts and the focus stays), counted as
+   moved (Clarification 17).
 3. For each tagged pane: an attach that has ended (the session ended, or the link was lost: ssh exited 255)
    marks the pane `@fleet-ended` and leaves it with its last screen and a `[fleet] session ended` or `[fleet]
    link lost` line, until the next sync closes it; if its entry is still attachable, a fresh attach replaces it.
@@ -161,7 +166,8 @@ Session `fleet`, or `fleet-<host>` under `--local`.
 
 One sync at a time per session (`flock -n` on its `sync.lock`): a second exits 0 and says one is running.
 `prefix F` shows `fleet: syncing…` as it starts, and the line `sync` prints when it ends: `fleet: synced <s>, nothing
-to change`, `fleet: synced <s>: 1 attached in this pane, 1 added, 2 closed, 1 followed a hop, 1 renamed`, or why it did not run.
+to change`, `fleet: synced <s>: 1 attached in this pane, 1 added, 2 closed, 1 followed a hop, 1 renamed, 2 moved to a window of its
+own`, or why it did not run.
 
 Nothing ever syncs on its own: panes never appear, move or close while the user types into an agent. What runs
 on its own is narrower, the hint loop's following of hops in the panes there are, in place (*Hint*, Clarification 16).
@@ -255,13 +261,9 @@ pane's successor.
 - **Read-only agent panes**: rejected for now in favour of interactive attach with distinct borders.
 - **Overview when every host is down**: its first pane is a `-` guest with nothing useful in it; show one line
   saying no host answered instead.
-- **Caps on panes and windows** (asked by the user after the first laptop run): today nothing limits either. A
-  repo window takes every attachable session, re-tiled on each sync, until tmux refuses the split (`no
-  space for new pane`, at panes 1–2 rows tall), and only then does `sync_layout` open a second window under the
-  same name. Wanted: a per-window pane cap (an option such as `@fleet-max-panes`, around 4–6) past which
-  sync opens `<repo> 2`, … counted at add time so a sync never moves existing panes; and a cap on the
-  number of agent windows, showing only the most recent sessions (the rest stay in the overview, and the hint
-  says how many are hidden). "Most recent" needs a time per entry, which none of the consumed `status.sh --json`
+- **A cap on windows** (asked by the user after the first laptop run, with a per-window pane cap that Clarification
+  17 made moot: a window holds one session): today nothing limits the number of agent windows. Wanted: a cap,
+  showing only the most recent sessions (the rest stay in the overview, and the hint says how many are hidden). "Most recent" needs a time per entry, which none of the consumed `status.sh --json`
   fields (decision 15) carries: find one in `status.sh` or add it in agent-methodology first.
 
 ## Clarifications
@@ -384,3 +386,12 @@ pane's successor.
    nothing appears, closes or moves, and a respawned pane is one whose attach had already ended, so no typing goes
    astray. The successor link is `status.sh --json`'s `prev`, already there (agent-methodology #86), so that repo
    needs no change.
+
+17. **Each session in a window of its own** (decision 6) — `folded`. Asked by the user (2026-11-06): "open another PR
+   to have each session on a window and not split panes within one". A repo's window tiled every session in it, each
+   pane smaller with every session added, until tmux refused the split. Sync now opens a window per attachable
+   session, named for its repo and tagged with its host as before, right after that host's last window for the repo,
+   so the tabs still group by host and repo; and it breaks an older fleet's tiled window apart (`break-pane`, the
+   attaches going on, a hand-opened shell staying), so a `git pull` and one prefix F reach a running fleet. The
+   pane cap of the follow-up *Caps* is moot; its window cap stays a follow-up. Rewritten in decision 6, *Layout* and
+   *Sync* step 2.
