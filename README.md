@@ -111,6 +111,7 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
 | `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; nothing syncs on its own |
+| `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |
 | `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
 | status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |

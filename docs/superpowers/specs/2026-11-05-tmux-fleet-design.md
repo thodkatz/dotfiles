@@ -34,7 +34,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 5 | Each guest's sessions come from the `status.sh` and `AGENT_SUPERVISE_REPOS` its `agent-supervise` user unit names (`systemctl --user show -p ExecStart -p Environment`); a guest without the unit is shown as `no supervisor` | *Discovery* | bats: the stub returns a unit with `ExecStart=/workspace/agent-methodology/shared/claude/supervise.sh`; `fleet` runs `…/status.sh --json --no-forge` with that `AGENT_SUPERVISE_REPOS`; a stub with no unit gives the `no supervisor` line and exit 0 |
 | 6 | Session `fleet` (`fleet-<host>` under `--local`): window 1 `overview` with one pane per guest, refreshing `fleet status <guest>` every 15 s, each row in its glyph's colour, its border naming the guest and its host (Clarifications 11, 13); then one window per repo that has at least one attachable session, named for the repo and tagged with its host (Clarification 10) | *Layout* | bats on `tmux -L fleet-test`: from the fixtures, `list-windows -F '#W|#{@fleet-host}'` prints `overview|`, `nixed|nixos`, `agent-methodology|thinkcentre` in that order; `overview` has one pane per guest |
 | 7 | A session is attachable when its `continue` starts with `dtach -a`; it gets one pane running `ssh -t agentvm@<ip> dtach -a <sock> -e '^]' -r winch`, tagged `@fleet-entry=<entry>` and with its border's `@fleet-glyph`, `@fleet-colour`, `@fleet-branch`, `@fleet-live` (Clarification 10), retagged on each sync; every other row (own terminal, blocked, stopped) is only an overview row | *Layout* | bats: three rows (one `dtach -a`, one empty `continue`, one blocked) give exactly one pane, whose `#{@fleet-entry}` and `#{@fleet-branch}` match the first row (Clarification 1) |
-| 8 | Sync is explicit (`prefix F` or `fleet sync`) and idempotent: it adds a pane for each attachable entry whose socket has none, closes every tagged pane whose attach has exited and every second pane on one socket, retags a live one whose entry is now blocked or stopped, never touches an untagged pane, and prints what it did | *Sync* | bats: a second sync on unchanged fixtures leaves `list-panes -a -F '#{pane_id}'` identical; adding one entry adds one pane; removing one closes it; an ended pane of a blocked entry is closed; of two live panes on one socket one is left; a pane made by hand in a fleet window survives both; `sync` prints `fleet: synced <s>, nothing to change` or what changed |
+| 8 | Sync is explicit (`prefix F` or `fleet sync`) and idempotent: it adds a pane for each attachable entry whose socket has none, closes every tagged pane whose attach has exited and every second pane on one socket, retags a live one whose entry is now blocked or stopped, never touches an untagged pane but the shell pane `prefix F` was pressed in, which attaches in place to the session a person started on its guest (Clarification 14), and prints what it did | *Sync* | bats: a second sync on unchanged fixtures leaves `list-panes -a -F '#{pane_id}'` identical; adding one entry adds one pane; removing one closes it; an ended pane of a blocked entry is closed; of two live panes on one socket one is left; a pane made by hand in a fleet window survives both; `sync` prints `fleet: synced <s>, nothing to change` or what changed |
 | 9 | One unreachable host or guest never fails a sync: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet sync` exits 0, the other guest's panes exist, and `fleet status <failed>` prints `unreachable` |
 | 10 | The status bar shows `fleet hint` from a cache file a background loop in the session refreshes every 20 s, so the bar never runs ssh: `<host> ●N ◆M  …  ↻K` in tmux styles (● live, ◆ a `kind` or `blocked`, hidden at 0; ↻ attachable entries with no pane, hidden at 0; the host in its tab colour) | *Hint* | bats: fixtures with 2 live, 1 stalled, 1 blocked on `nixos` and one unpaned attachable entry give `nixos ●3 ◆2  thinkcentre ●1  ↻1` with the styles stripped (Clarifications 2, 10); `fleet hint` with no cache prints nothing and exits 0 |
 | 11 | Keys (prefix `C-b`, nothing existing rebound): `F` sync, `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; `C-]` detaches dtach in an agent pane, which closes it and leaves the agent running | *Plugins, keys, theme* | `tmux list-keys -T prefix` shows `F`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged; manual: `C-]` in an agent pane closes it, and the guest's `status.sh` still shows that session `alive` |
@@ -146,7 +146,12 @@ Session `fleet`, or `fleet-<host>` under `--local`.
    whose guest is unreachable this time) is kept as it is. A resurrect restore
    never reaches this step: `fleet` rebuilds a restored session (Clarification 3), and saves leave fleet's
    sessions out (Clarification 6).
-4. Untagged panes and windows with neither `@fleet-host` nor a `<host>·<repo>` name are never touched.
+4. Untagged panes and windows with neither `@fleet-host` nor a `<host>·<repo>` name are never touched, with one
+   exception, before step 2: the pane `prefix F` was pressed in (`fleet sync -p <pane>`). When it is an untagged
+   pane of this session (no `@fleet-entry`, no `@fleet-guest`) whose first `ssh` process, at or under the pane's,
+   resolves (`ssh -G`'s `hostname`) to a guest's IP or name, it is respawned as that guest's newest (`started`)
+   attended (`unattended` 0) attachable entry with no pane, tagged as any agent pane, in its own window; no such
+   entry, and it is left as it is (Clarification 14).
 5. Refresh the hint cache.
 6. Bring forward what an older fleet left running, which a `git pull` does not change (Clarification 11): an overview
    pane without `@fleet-overview` 2 is respawned with the current loop, and a hint loop whose `hintloop.pid` has
@@ -154,7 +159,7 @@ Session `fleet`, or `fleet-<host>` under `--local`.
 
 One sync at a time per session (`flock -n` on its `sync.lock`): a second exits 0 and says one is running.
 `prefix F` shows `fleet: syncing…` as it starts, and the line `sync` prints when it ends: `fleet: synced <s>, nothing
-to change`, `fleet: synced <s>: 1 added, 2 closed, 1 followed a hop, 1 renamed`, or why it did not run.
+to change`, `fleet: synced <s>: 1 attached in this pane, 1 added, 2 closed, 1 followed a hop, 1 renamed`, or why it did not run.
 
 Nothing ever syncs on its own: panes never appear or move while the user types into an agent.
 
@@ -330,3 +335,13 @@ these. A row missing a field is shown with `?`; a `continue` of another shape is
    `status.sh` over ssh was rejected: it would need an agent-methodology change and still use the basic ANSI colours,
    not fleet's gruvbox ones. The overview pane's version goes to 3, so a sync restarts the panes an older fleet
    started.
+
+14. **The pane that ran `claudes -d` becomes its pane** (decision 8) — `folded`. Asked by the user (2026-11-06):
+   after opening a pane, ssh-ing into a guest and running `claudes -d`, prefix F added the session's pane beside it,
+   and the first pane had to be closed by hand. `claudes -d` now attaches in its own terminal once it has started the
+   chain under `dtach` (nixed, agentvm), and prefix F passes its pane (`-p "#{pane_id}"`): a plain shell pane of the
+   fleet session ssh'd into a guest is respawned as fleet's attach to that guest's newest attended session with no
+   pane, so a later sync adds no second pane on its socket. Attended only: the supervisor's unattended sessions get
+   their own panes, as before. A guest-side signal to the laptop's tmux, with no prefix F at all, was rejected: the
+   guest can't reach it, a terminal title is overwritten by Claude Code, and ssh's source port need not survive the
+   tailnet's NAT.

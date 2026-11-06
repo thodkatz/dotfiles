@@ -249,11 +249,32 @@ tag_pane() {
     set -p -t "$1" @fleet-branch "$2" \; set -p -t "$1" @fleet-live "$3" 2>/dev/null
 }
 
-# Lay the session out from its fleet.json; see the spec's *Sync*.
+# The guest a shell pane is ssh'd into, by its IP: the first ssh process at or under the pane's own, its
+# destination's hostname as `ssh -G` resolves it (an alias in ~/.ssh/config too), one of fleet.json's guest IPs or
+# names. ps, not /proc: macOS has no /proc. Nothing when the pane runs no ssh, or not to a guest.
+pane_guest_ip() {
+  local ssh_pid words host i
+  ssh_pid=$(ps -A -o pid=,ppid=,comm= | awk -v root="$1" '
+    { pid[NR] = $1; ppid[NR] = $2; n = split($3, c, "/"); comm[NR] = c[n] }
+    END { under[root] = 1
+      do { more = 0; for (i = 1; i <= NR; i++) if (under[ppid[i]] && !under[pid[i]]) { under[pid[i]] = 1; more = 1 } } while (more)
+      for (i = 1; i <= NR; i++) if (under[pid[i]] && comm[i] == "ssh") { print pid[i]; exit } }')
+  [ -n "$ssh_pid" ] || return 1
+  # Its arguments after the word that ran it: `ssh ...`, or `bash /path/ssh ...` for a script named ssh
+  read -ra words <<<"$(ps -o args= -p "$ssh_pid")"
+  for ((i = 0; i < ${#words[@]}; i++)); do [ "${words[i]##*/}" != ssh ] || break; done
+  [ "$i" -lt "${#words[@]}" ] || return 1
+  host=$(ssh -G "${words[@]:i+1}" </dev/null 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')
+  [ -n "$host" ] || return 1
+  jq -er --arg h "$host" 'first(.[] | select(.guest != "-" and (.ip == $h or .guest == $h)) | .ip)' "$2"
+}
+
+# Lay the session out from its fleet.json; see the spec's *Sync*. $2: the pane prefix F was pressed in, which
+# takes its guest's newest new session a person started (claudes -d) when it is a plain shell ssh'd into that guest.
 sync_layout() {
-  local s=$1 d json g pid entry ended psock cmd e host guest ip repo branch live sock row wid have h n
+  local s=$1 here=${2:-} d json g pid entry ended psock cmd e host guest ip repo branch live sock row wid have h n
   d=$(sdir "$s"); json=$d/fleet.json
-  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RETAGGED=0 SYNC_RENAMED=0
+  SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RETAGGED=0 SYNC_RENAMED=0 SYNC_HERE=0
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
   # socket has one pane: a second would mirror the first, scrolling included.
@@ -326,6 +347,26 @@ sync_layout() {
       tag_pane "$pid" "${row%%$'\t'*}" "${row#*$'\t'}"
     fi
   done < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-entry}\037#{@fleet-ended}\037#{@fleet-sock}\037#{pane_start_command}')
+
+  # The pane prefix F was pressed in: a person opened it, ssh'd into a guest and ran `claudes -d` there. When it is
+  # a plain shell in this session (no agent or overview pane), it becomes that session's pane, in place of the shell,
+  # rather than a new one beside it to switch to while this one is closed by hand. The session: the guest's newest
+  # attended (unattended 0) attachable entry with no pane, never the supervisor's unattended ones.
+  local here_s here_tags
+  if [ -n "$here" ] && IFS=$'\037' read -r here_s here_tags pid < <(tmx display -p -t "$here" \
+      $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}\037#{pane_pid}' 2>/dev/null) &&
+    [ "$here_s" = "$s" ] && [ -z "$here_tags" ] && ip=$(pane_guest_ip "$pid" "$json"); then
+    while IFS=$'\t' read -r entry sock; do
+      [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
+      tmx respawn-pane -k -t "$here" "$(self_cmd _attach "$ip" "$sock")" || break
+      paned[$entry]=1 sockpaned["$ip $sock"]=1 SYNC_HERE=1
+      tmx set -p -t "$here" @fleet-entry "$entry" \; set -p -t "$here" @fleet-sock "$ip $sock" 2>/dev/null
+      tag_pane "$here" "${newrow[$entry]%%$'\t'*}" "${newrow[$entry]#*$'\t'}"
+      break
+    done < <(jq -r --arg ip "$ip" '.[] | select(.ip == $ip and .status == "ok") | .rows[]
+      | select(.unattended == 0 and ((.continue // "") | startswith("dtach -a ")))
+      | [(.started // "0" | tostring), .entry, (.continue | split(" ")[2])] | @tsv' "$json" | sort -t $'\t' -k1,1nr | cut -f 2-)
+  fi
 
   # A pane for each attachable entry that has none, on a socket that has none, by host then repo.
   while IFS=$'\t' read -r entry host guest ip repo branch live sock; do
@@ -407,15 +448,19 @@ cmd_up() {
 }
 
 cmd_sync() {
-  local s
-  s=$(target_session "${1:-}") || die "no fleet session; start one with: fleet"
+  local s t='' here=''
+  while [ $# -gt 0 ]; do
+    case $1 in -t) t=${2:-}; shift ;; -p) here=${2:-}; shift ;; esac
+    shift
+  done
+  s=$(target_session "$t") || die "no fleet session; start one with: fleet"
   use_session "$s"   # target_session ran in a subshell
   # One sync at a time per session: two would both add the same panes.
   mkdir -p "$(sdir "$s")"
   exec 9>"$(sdir "$s")/sync.lock"
   flock -n 9 || { echo "fleet: a sync of $s is already running" >&2; exit 0; }
   discover "$(sdir "$s")/fleet.json"
-  sync_layout "$s"
+  sync_layout "$s" "$here"
   hint_write "$s"
   # A hint loop an older fleet started keeps that fleet's code, and its look, until it dies: replace it.
   local pidf p v; pidf=$(sdir "$s")/hintloop.pid
@@ -425,6 +470,7 @@ cmd_sync() {
   fi
   # Prefix F shows this line: a sync can take a while, and without it one that changed nothing looks like none ran.
   local did=()
+  [ "$SYNC_HERE" = 0 ] || did+=("1 attached in this pane")
   [ "$SYNC_ADDED" = 0 ] || did+=("$SYNC_ADDED added")
   [ "$SYNC_CLOSED" = 0 ] || did+=("$SYNC_CLOSED closed")
   [ "$SYNC_RETAGGED" = 0 ] || did+=("$SYNC_RETAGGED followed a hop")
@@ -549,7 +595,9 @@ usage: fleet [--local] [command]
 
   (none)        start the fleet session if needed, then attach or switch to it
   up            start the fleet session if needed (no attach)
-  sync [-t s]   rediscover and add/close agent panes (prefix F)
+  sync [-t s] [-p pane]   rediscover and add/close agent panes (prefix F); -p: a
+                shell pane ssh'd into a guest attaches to the session started
+                there with `claudes -d`, instead of a new pane
   ls            list guests: host guest ip
   status GUEST  that guest's status.sh table, or unreachable / no supervisor
   hint [-t s] [--refresh]   the status-bar hint (cached; --refresh rediscovers)
@@ -573,7 +621,7 @@ main() {
       if [ -n "${TMUX:-}" ]; then tmx switch-client -t "=$(default_session)"
       else exec tmux ${FLEET_TMUX_SOCKET:+-L "$FLEET_TMUX_SOCKET"} attach -t "=$(default_session)"; fi ;;
     up) cmd_up ;;
-    sync) if [ "${1:-}" = -t ]; then cmd_sync "${2:-}"; else cmd_sync; fi ;;
+    sync) cmd_sync "$@" ;;
     hint) cmd_hint "$@" ;;
     _overview) cmd__overview "$@" ;;
     _colour) colour_table ;;

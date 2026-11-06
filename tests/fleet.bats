@@ -230,6 +230,77 @@ wait_attached() {
   [ "$output" = 'fleet: synced fleet: 1 added' ]
 }
 
+# A shell pane ssh'd into guest $1, as a person opens one to run `claudes -d`: a script named ssh (its process's
+# comm), its destination in its arguments, waiting; in window $2 (the overview). Prints the pane's id.
+ssh_pane() {
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+  printf '#!%s\ntrap '"'"'kill $! 2>/dev/null; exit'"'"' HUP TERM\nsleep 600 & wait\n' "$(command -v bash)" > "$BATS_TEST_TMPDIR/bin/ssh"
+  chmod +x "$BATS_TEST_TMPDIR/bin/ssh"
+  t split-window -d -t "${2:-=fleet:overview}" -P -F '#{pane_id}' "$BATS_TEST_TMPDIR/bin/ssh -o ConnectTimeout=5 agentvm@$1"
+}
+# A person's `claudes -d` run on guest .51: attended, started at $2.
+mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktree: "/workspace/nixed", branch: "main",
+  live: "alive", state: "running", kind: "", entry: $e, unattended: 0, started: $s,
+  continue: "dtach -a /var/tmp/agent-sessions/\($e).sock -r winch"}'; }
+
+@test "sync -p: a shell pane ssh'd into a guest takes the new session a person started there" {
+  "$FLEET" up
+  pane=$(ssh_pane 192.168.122.51)
+  sleep 0.3   # its ssh is up
+  before=$(t list-panes -a -F '#{pane_id}' | sort)
+  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
+  run "$FLEET" sync -t fleet -p "$pane"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+  run t display -p -t "$pane" '#{@fleet-entry}|#{@fleet-sock}|#{@fleet-branch} #{@fleet-live}'
+  [ "$output" = 'e-mine|192.168.122.51 /var/tmp/agent-sessions/e-mine.sock|main alive' ]
+  wait_attached e-mine
+  # A later sync keeps it, adds no second pane on its socket.
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+}
+
+@test "sync -p: of two new sessions a person started, the newest; the other gets its own pane" {
+  "$FLEET" up
+  pane=$(ssh_pane 192.168.122.51)
+  sleep 0.3
+  add_row 192.168.122.51 "$(mine_row e-old 1000)"
+  add_row 192.168.122.51 "$(mine_row e-new 2000)"
+  "$FLEET" sync -t fleet -p "$pane"
+  [ "$(t display -p -t "$pane" '#{@fleet-entry}')" = e-new ]
+  [[ "$(entries)" == *e-old* ]]
+}
+
+@test "sync -p: leaves the pane when the guest has no new session a person started, or it is ssh'd elsewhere" {
+  "$FLEET" up
+  pane=$(ssh_pane 192.168.123.51)
+  sleep 0.3
+  # unattended: the supervisor's, not this person's; and the attended one is on the other guest
+  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
+  add_row 192.168.123.51 "$(jq -c '.unattended = 1 | .entry = "e-hop" | .continue = "dtach -a /var/tmp/agent-sessions/e-hop.sock -r winch"' <<<"$(mine_row x 1000)")"
+  run "$FLEET" sync -t fleet -p "$pane"
+  [ "$output" = 'fleet: synced fleet: 2 added' ]
+  [ -z "$(t display -p -t "$pane" '#{@fleet-entry}')" ]
+  [[ "$(t display -p -t "$pane" '#{pane_start_command}')" == *bin/ssh* ]]
+}
+
+@test "sync -p: an agent pane, or a pane outside the fleet session, is never taken" {
+  "$FLEET" up
+  t new-session -d -s mine "$(command -v bash)"
+  other=$(ssh_pane 192.168.122.51 =mine:)
+  sleep 0.3
+  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
+  run "$FLEET" sync -t mine -p "$other"
+  [ "$output" = 'fleet: synced fleet: 1 added' ]
+  [ -z "$(t display -p -t "$other" '#{@fleet-entry}')" ]
+  agent=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  add_row 192.168.122.51 "$(mine_row e-mine2 2000)"
+  "$FLEET" sync -t fleet -p "$agent"
+  [ "$(t display -p -t "$agent" '#{@fleet-entry}')" = e-nixed-1 ]
+  [[ "$(entries)" == *e-mine2* ]]
+}
+
 @test "sync: a window made before the host tags (<host>·<repo>) is reused, renamed and tagged" {
   "$FLEET" up
   wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed" { print $1 }')
