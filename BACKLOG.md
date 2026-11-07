@@ -11,10 +11,6 @@ Due soon, on any track: what someone said to do "in the next session", and what 
 start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
-- GitHub settings for thodkatz/dotfiles (ADOPTING.md step 4): the labels `spec plan impl change approved
-  large-slice waiting-on-user`, auto-delete of head branches — from the
-  adoption PR; the user declined them on 2026-11-07, so until they exist a claim's `gh pr create --label` fails
-  (open without `--label`) and a spec has no `approved` gate; waits on the user.
 
 ## Unscheduled
 
