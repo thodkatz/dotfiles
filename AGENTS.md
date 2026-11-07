@@ -165,8 +165,9 @@ hosts too, managed with GNU Stow (*Working Conventions*). The one piece of code 
 guests, reading each host's `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
-  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; a running `fleet` needs `prefix F` to restart
-  its loops (`README.md`, *Update and run*).
+  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; a running `fleet` restarts its overview and hint
+  loops on `prefix F` only when their version stamp in `fleet` changed, so a change to what a loop does bumps
+  its stamp (`README.md`, *Update and run*).
 - **A session in a guest can't reach the laptop or the hosts' tmux**: test `fleet` with the bats suite, which
   stubs ssh, systemctl and ip (`tests/stub`) and answers from `tests/fixtures`, never a real host.
 
@@ -216,11 +217,6 @@ Who runs each PR's review round (`development-workflow.md`, *Review and merge*):
 
 - **`local`**: reviewer subagents in the working session (*Local review* there); no CI reviewer.
 
-<!-- CI review instead (the agent-action callers copied from .methodology/template-ci/): replace the line above with
-- **Default:** `agent:<default reviewer>`
-- **Fallbacks, in order:** `agent:<fallback 1>`, then `agent:<fallback 2>`
--->
-
 ## Project knowledge
 
 <!-- methodology: project-knowledge -->
@@ -255,7 +251,7 @@ PR is needed. Don't record what the code or history already shows.
 
 Nothing to install in a nixed-microvm guest: `tmux`, `bats`, `shellcheck`, `jq` and `dtach` are on its PATH (on
 the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). The tests, from the repo root, each on a private
-tmux server (about a minute; light enough to run without `methodology heavy`):
+tmux server (about four minutes; light enough to run without `methodology heavy`):
 
 ```bash
 bats tests/              # tests/fleet.bats
