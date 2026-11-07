@@ -1,2 +1,5 @@
 # TPM clones plugins here; stow folds ~/.config/tmux into this repo
 tmux/dot-config/tmux/plugins/
+/.methodology
+.claude/settings.local.json
+.claude/worktrees/

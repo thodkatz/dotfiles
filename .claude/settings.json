@@ -1,0 +1,71 @@
+{
+  "env": {
+    "AGENT_CONTEXT_BUDGET": "150000",
+    "AGENT_AUTO_CONTINUE": "true",
+    "AGENT_CHAIN_MAX": "10"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/statusline.sh\"; [ -x \"$f\" ] && exec \"$f\"; cat >/dev/null; echo 'methodology: not installed'"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "h=${AGENT_METHODOLOGY_HOME:-~/.local/share/agent-methodology};m=/shared/methodology;f=$h/current$m;cd \"$CLAUDE_PROJECT_DIR\"||exit 0;[ -x \"$f\" ]&&exec \"$f\" setup --hook;[ \"$GITHUB_ACTIONS\" ]||echo \"methodology: run git clone git@github.com:thodkatz/agent-methodology.git $h/repo && $h/repo$m update\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/pkill-guard.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/failed-command.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"${GITHUB_ACTIONS:-}\" ] || exit 0; f=\"${AGENT_METHODOLOGY_HOME:-$HOME/.local/share/agent-methodology}/current/shared/claude/context-budget.py\"; [ -f \"$f\" ] || exit 0; command -v python3 >/dev/null || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
