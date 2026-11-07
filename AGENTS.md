@@ -147,6 +147,10 @@ because Z." This file wins over the guides in `.methodology/shared/guides/`.
 - In this repo, the trunk is `master` instead of `main` wherever the shared guides say `main` or `origin/main`
   (`development-workflow.md`, throughout), because the hosts' checkouts track `master`. The user's decision,
   2026-11-07.
+- In this repo, no `pr-checks` workflow instead of `forge-github.md`, *Before a merge*, because dotfiles is public
+  and agent-action, which it runs, is private (GitHub can't resolve it: "Unable to resolve action
+  `thodkatz/agent-action`, not found"). The local review round checks the same rules: slice size, a spec's
+  `approved`, clarification status, carried-forward text. 2026-11-07.
 
 ## Current work
 
