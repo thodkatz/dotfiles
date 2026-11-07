@@ -99,13 +99,13 @@ wait_attached() {
   [ "$output" = "table of 192.168.122.51" ]
 }
 
-@test "up: overview, then one window per session, named for its repo, tagged with its host, in order (D6)" {
+@test "up: overview, then one window per session, named for its repo and branch, tagged with its host, in order (D6)" {
   run "$FLEET" up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{window_panes}'
-  [ "$output" = $'overview|||4\nnixed|nixos|#8ec07c|1\nnixed|nixos|#8ec07c|1\nagent-methodology|thinkcentre|#fe8019|1' ]
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-entry}' -f '#{!=:#W,overview}'
-  [ "$output" = $'nixed|e-nixed-1\nnixed|e-nixed-stall\nagent-methodology|e-am-1' ]
+  [ "$output" = $'overview|||4\nnixed/main|nixos|#8ec07c|1\nnixed/x|nixos|#8ec07c|1\nagent-methodology|thinkcentre|#fe8019|1' ]
+  run t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f '#{!=:#W,overview}'
+  [ "$output" = $'nixed/main|nixed|e-nixed-1\nnixed/x|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
   run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
   [ "$(grep . <<<"$output")" = $'agentvm-repos\nagentvm-thinkrepos' ]
 }
@@ -215,6 +215,78 @@ wait_attached() {
   [[ "$output" != *'|e-nixed-1|'* ]]
 }
 
+# The windows of the fleet session but the overview: name|@fleet-repo|@fleet-entry, one per line.
+wins() { t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f '#{&&:#{!=:#W,overview},#{@fleet-entry}}'; }
+# Set row $2's branch on guest $1 to $3.
+set_branch() { jq --arg e "$2" --arg b "$3" 'map(if .entry == $e then .branch = $b else . end)' "$FLEET_FIXTURES/guest-$1.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-$1.json"; }
+
+@test "up: a window's name is its repo and its branch's last part, at most 24 characters; the repo alone when no branch" {
+  set_branch 192.168.122.51 e-nixed-1 change/accounts-view-2
+  set_branch 192.168.122.51 e-nixed-stall impl/a-branch-name-well-past-the-limit
+  "$FLEET" up
+  run wins
+  [ "$output" = $'nixed/accounts-view-2|nixed|e-nixed-1\nnixed/a-branch-name-well-past…|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
+}
+
+@test "sync: a window follows its session's branch: a hop to another branch, a branch that changes in place" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  # a hop in the same dtach, onto another branch
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "change/next-thing" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  # the other session's worktree moved to another branch (status.sh reports the new one)
+  set_branch 192.168.122.51 e-nixed-stall impl/w
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet: 1 followed a hop, 2 renamed' ]
+  [ "$(t display -p -t "$wid" '#W|#{@fleet-name}')" = 'nixed/next-thing|nixed/next-thing' ]
+  run wins
+  [ "$output" = $'nixed/next-thing|nixed|e-nixed-1b\nnixed/w|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet, nothing to change' ]
+  # a branch status.sh no longer knows: the repo alone
+  set_branch 192.168.122.51 e-nixed-stall ''
+  "$FLEET" sync -t fleet
+  [[ "$(wins)" == *$'\nnixed|nixed|e-nixed-stall\n'* ]]
+}
+
+@test "tick: a hop to another branch renames its window, no prefix F" {
+  "$FLEET" up
+  wait_attached e-nixed-1
+  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" | .prev = "e-nixed-1" else . end)' \
+    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
+  "$FLEET" _tick fleet
+  [ "$(t display -p -t "$wid" '#W|#{@fleet-entry}')" = 'nixed/z|e-nixed-1b' ]
+}
+
+@test "sync: a window a person renamed keeps its name; its repo's next session still opens beside it" {
+  "$FLEET" up
+  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  t rename-window -t "$wid" mine
+  set_branch 192.168.122.51 e-nixed-1 impl/other
+  add_row 192.168.122.51 "$NEW_ROW"
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet: 1 added' ]
+  [ "$(t display -p -t "$wid" '#W|#{@fleet-repo}')" = 'mine|nixed' ]
+  # grouped by @fleet-repo, not the name: the new session after the repo's last window
+  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,mine,nixed/x,nixed/y,agent-methodology,' ]
+}
+
+@test "sync: a window from before @fleet-repo, named for its repo, is tagged and named for its branch; one renamed by hand is not" {
+  "$FLEET" up
+  for e in e-nixed-1 e-nixed-stall; do
+    w=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk -v e=$e '$2 == e { print $1 }')
+    t set -wu -t "$w" @fleet-repo \; set -wu -t "$w" @fleet-name
+  done
+  t rename-window -t "$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')" nixed
+  t rename-window -t "$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-stall" { print $1 }')" by-hand
+  run "$FLEET" sync -t fleet
+  [ "$output" = 'fleet: synced fleet: 1 renamed' ]
+  run wins
+  [ "$output" = $'nixed/main|nixed|e-nixed-1\nby-hand||e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
+}
+
 @test "sync: a hop keeps a pane made before @fleet-sock, its socket read from its command" {
   "$FLEET" up
   wait_attached e-nixed-1
@@ -294,15 +366,15 @@ ssh_window() {
   t new-window -d -t =fleet: -P -F '#{pane_id}' "$(command -v bash) -c '$BATS_TEST_TMPDIR/bin/ssh -o ConnectTimeout=5 agentvm@$1'"
 }
 
-@test "sync -p: a pane alone in its window (prefix c) gets the window a new pane would: its repo's name, its host" {
+@test "sync -p: a pane alone in its window (prefix c) gets the window a new pane would: its repo's and branch's name, its host" {
   "$FLEET" up
   pane=$(ssh_window 192.168.122.51)
   sleep 0.3
   add_row 192.168.122.51 "$(mine_row e-mine 1000)"
   run "$FLEET" sync -t fleet -p "$pane"
   [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
-  run t display -p -t "$pane" '#{window_name}|#{@fleet-host}|#{@fleet-entry}'
-  [ "$output" = 'nixed|nixos|e-mine' ]
+  run t display -p -t "$pane" '#{window_name}|#{@fleet-host}|#{@fleet-repo}|#{@fleet-entry}'
+  [ "$output" = 'nixed/main|nixos|nixed|e-mine' ]
   [ -n "$(t display -p -t "$pane" '#{@fleet-host-colour}')" ]
   # a second round, as the first: prefix c, claudes -d, prefix F
   pane2=$(ssh_window 192.168.122.51)
@@ -310,7 +382,7 @@ ssh_window() {
   add_row 192.168.122.51 "$(mine_row e-mine2 2000)"
   run "$FLEET" sync -t fleet -p "$pane2"
   [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
-  [ "$(t display -p -t "$pane2" '#{window_name}|#{@fleet-entry}')" = 'nixed|e-mine2' ]
+  [ "$(t display -p -t "$pane2" '#{window_name}|#{@fleet-entry}')" = 'nixed/main|e-mine2' ]
 }
 
 @test "sync -p: a pane split into another window leaves that window's name" {
@@ -362,38 +434,46 @@ ssh_window() {
   [[ "$(entries)" == *e-mine2* ]]
 }
 
+# What an older fleet left of window $1: named <host>·<repo>, none of the window tags.
+old_window() {
+  t rename-window -t "$1" 'nixos·nixed' \; set -wu -t "$1" @fleet-host \; set -wu -t "$1" @fleet-host-colour \; \
+    set -wu -t "$1" @fleet-repo \; set -wu -t "$1" @fleet-name
+}
+
 @test "sync: a window made before the host tags (<host>·<repo>) is kept, renamed and tagged, a new session beside it" {
   "$FLEET" up
-  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed" { print $1; exit }')
-  t rename-window -t "$wid" 'nixos·nixed' \; set -wu -t "$wid" @fleet-host \; set -wu -t "$wid" @fleet-host-colour
+  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed/main" { print $1; exit }')
+  old_window "$wid"
   add_row 192.168.122.51 "$NEW_ROW"
   "$FLEET" sync -t fleet
   run t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}'
-  [[ "$output" == *"$wid|nixed|nixos|#8ec07c"* ]]
-  [ "$(grep -c '|nixed|nixos|#8ec07c$' <<<"$output")" -eq 3 ]
+  [[ "$output" == *"$wid|nixed/main|nixos|#8ec07c"* ]]
+  [ "$(grep -c '|nixed/[a-z]*|nixos|#8ec07c$' <<<"$output")" -eq 3 ]
   [ "$(grep -c nixed <<<"$output")" -eq 3 ]
+  # the new session right after the repo's other windows
+  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,nixed/main,nixed/x,nixed/y,agent-methodology,' ]
   [ "$(t list-panes -t "$wid" -F '#{@fleet-entry}')" = e-nixed-1 ]
 }
 
 @test "sync: such a window is renamed even when the sync adds no pane to it, and says so" {
   "$FLEET" up
-  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed" { print $1; exit }')
-  t rename-window -t "$wid" 'nixos·nixed' \; set -wu -t "$wid" @fleet-host \; set -wu -t "$wid" @fleet-host-colour
+  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed/main" { print $1; exit }')
+  old_window "$wid"
   run "$FLEET" sync -t fleet
   [ "$output" = 'fleet: synced fleet: 1 renamed' ]
-  [[ "$(t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}')" == *"$wid|nixed|nixos|#8ec07c"* ]]
+  [[ "$(t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}')" == *"$wid|nixed/main|nixos|#8ec07c"* ]]
 }
 
 @test "up: windows by host, then repo; a session sync adds goes right after its repo's last window" {
   add_row 192.168.122.51 '{"repo": "/workspace/abc", "worktree": "/workspace/abc", "branch": "main", "live": "alive", "state": "running", "kind": "", "entry": "e-abc-1", "continue": "dtach -a /var/tmp/agent-sessions/e-abc-1.sock -r winch"}'
   "$FLEET" up
   run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-entry}' -f '#{!=:#W,overview}'
-  [ "$output" = $'abc|nixos|e-abc-1\nnixed|nixos|e-nixed-1\nnixed|nixos|e-nixed-stall\nagent-methodology|thinkcentre|e-am-1' ]
+  [ "$output" = $'abc/main|nixos|e-abc-1\nnixed/main|nixos|e-nixed-1\nnixed/x|nixos|e-nixed-stall\nagent-methodology|thinkcentre|e-am-1' ]
   add_row 192.168.122.51 "$NEW_ROW"
   run "$FLEET" sync -t fleet
   [ "$output" = 'fleet: synced fleet: 1 added' ]
   run t list-panes -s -t =fleet -F '#W|#{window_panes}|#{@fleet-entry}' -f '#{!=:#W,overview}'
-  [ "$output" = $'abc|1|e-abc-1\nnixed|1|e-nixed-1\nnixed|1|e-nixed-stall\nnixed|1|e-nixed-2\nagent-methodology|1|e-am-1' ]
+  [ "$output" = $'abc/main|1|e-abc-1\nnixed/main|1|e-nixed-1\nnixed/x|1|e-nixed-stall\nnixed/y|1|e-nixed-2\nagent-methodology|1|e-am-1' ]
 }
 
 @test "sync: an older fleet's tiled window is broken up, one session per window; a shell opened in it stays" {
@@ -407,7 +487,7 @@ ssh_window() {
   shell=$(t split-window -d -t "$first" -P -F '#{pane_id}' 'sleep 600')
   t join-pane -d -s "$(pane_of e-nixed-stall)" -t "$shell"
   t join-pane -d -s "$(pane_of e-nixed-2)" -t "$(pane_of e-nixed-stall)"
-  t select-layout -t "$wid" tiled \; rename-window -t "$wid" 'nixos·nixed' \; set -wu -t "$wid" @fleet-host \; set -wu -t "$wid" @fleet-host-colour
+  t select-layout -t "$wid" tiled; old_window "$wid"
   [ "$(t list-panes -t "$wid" -F '#{@fleet-entry}' | tr '\n' ,)" = 'e-nixed-1,,e-nixed-stall,e-nixed-2,' ]
   before=$(t list-panes -a -F '#{pane_id}' | sort)
   run "$FLEET" sync -t fleet
@@ -416,7 +496,7 @@ ssh_window() {
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
   [ "$(t list-panes -t "$wid" -F '#{pane_id}' | tr '\n' ,)" = "$first,$shell," ]
   run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{@fleet-entry}' -f '#{!=:#W,overview}'
-  [ "$output" = $'nixed|nixos|#8ec07c|e-nixed-1\nnixed|nixos|#8ec07c|\nnixed|nixos|#8ec07c|e-nixed-stall\nnixed|nixos|#8ec07c|e-nixed-2\nagent-methodology|thinkcentre|#fe8019|e-am-1' ]
+  [ "$output" = $'nixed/main|nixos|#8ec07c|e-nixed-1\nnixed/main|nixos|#8ec07c|\nnixed/x|nixos|#8ec07c|e-nixed-stall\nnixed/y|nixos|#8ec07c|e-nixed-2\nagent-methodology|thinkcentre|#fe8019|e-am-1' ]
   run "$FLEET" sync -t fleet
   [ "$output" = 'fleet: synced fleet, nothing to change' ]
 }
@@ -502,7 +582,7 @@ ssh_window() {
   ! t list-windows -t =fleet -F '#W' | grep -qx mine
   [ "$(t show -gv @fleet-booted-fleet)" = 1 ]
   run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\nnixed\nnixed\nagent-methodology' ]
+  [ "$output" = $'overview\nnixed/main\nnixed/x\nagent-methodology' ]
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -510,7 +590,7 @@ ssh_window() {
   run "$FLEET" --local up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet-nixos -F '#W'
-  [ "$output" = $'overview\nnixed\nnixed' ]
+  [ "$output" = $'overview\nnixed/main\nnixed/x' ]
   [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
   run "$FLEET" sync -t fleet-nixos
   [ "$status" -eq 0 ]
