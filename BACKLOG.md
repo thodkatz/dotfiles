@@ -19,3 +19,6 @@ start reads this section; keep it short.
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
+- Split the tmux-fleet spec (`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`, 412 lines) into a directory,
+  a `README.md` index plus one file per section (`spec-and-plan-layout.md`, *Splitting an existing document*) — from PR #4's
+  review, waits because it is a `git mv`-and-links change of its own, not this PR's.

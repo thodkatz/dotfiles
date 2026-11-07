@@ -44,7 +44,8 @@ nix --store /var/tmp/nixed-store --extra-experimental-features 'nix-command flak
 - Every ssh: `-o BatchMode=yes -o ConnectTimeout=5` (D9). Guest user `agentvm` (`AGENTVM_GUEST_USER`).
 - Hosts file `~/.config/fleet/hosts`: one ssh destination per line (`theo@nixos`); the host label is the part
   after `@`. Blank lines and `#` lines are skipped.
-- Session `fleet`, or `fleet-<host>` under `--local` (D6). Windows: `overview`, then `<host>·<repo>` (U+00B7).
+- Session `fleet`, or `fleet-<host>` under `--local` (D6). Windows: `overview`, then `<repo>/<branch>` (spec, decision 6), tagged
+  `@fleet-host`, `@fleet-host-colour`, `@fleet-repo` and `@fleet-name`.
 - Pane user options: `@fleet-entry` (status.sh `entry`), `@fleet-title` (`<guest> · <branch> · <live>`),
   `@fleet-guest` (overview panes), `@fleet-ended` (attach ended). Session option `@fleet-mode local|remote`;
   global `@fleet-booted-<session>` (Clarification 3).

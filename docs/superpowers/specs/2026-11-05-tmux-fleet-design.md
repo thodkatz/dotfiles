@@ -16,7 +16,7 @@ here).
 **Decision.** This repo becomes the single source of the tmux config, with plugins (sessionx,
 extrakto, yank, resurrect, continuum) and its own gruvbox theme, and gains a bash tool, `fleet`, that builds one tmux session on the
 laptop: window 1 is an overview of every guest's `status.sh`, then one window per attachable agent session (named
-for its repo, coloured for its host) holding its interactive pane (`ssh -t` + `dtach -a`). It discovers hosts' guests live from
+`<repo>/<branch>`, coloured for its host) holding its interactive pane (`ssh -t` + `dtach -a`). It discovers hosts' guests live from
 `/etc/agentvm/projects.json`, reads each guest's sessions from the supervisor's own `status.sh --json`, syncs on
 a key (never on its own), and shows a cached status-bar hint when the layout is out of date. The same tool runs
 on a host as `fleet --local`, for that host's guests only. nixed stops carrying its own copy: home-manager links
@@ -409,4 +409,4 @@ pane's successor.
    `status.sh` follows a session that moved worktrees, branch `change/status-follow-hop-worktree`). `/`, not `·`:
    Clarification 10 dropped `·` from tabs, and `<host>·<repo>` is the old name the migration renames. With the name
    no longer the repo, a window carries `@fleet-repo`, which groups a repo's windows, and `@fleet-name`, the name
-   fleet gave it, so one a person renamed is left alone. Rewritten in decision 6 and *Layout*.
+   fleet gave it, so one a person renamed is left alone. Rewritten in decision 6, *Layout* and *Sync* step 2.

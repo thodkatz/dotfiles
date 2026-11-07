@@ -262,14 +262,19 @@ win_label() {
   printf '%s/%s\n' "$1" "$b"
 }
 
+# Each entry of the session's fleet.json and its repo's name, tab-separated.
+entry_repos() {
+  jq -r '.[] | select(.status == "ok") | .rows[]? | [(.entry // ""), ((.repo // "") | split("/") | last)] | @tsv' \
+    "$(sdir "$1")/fleet.json" 2>/dev/null
+}
+
 # Name each agent window for its repo and its first agent pane's branch (win_label), on every sync and tick, so a
 # hop to another branch shows in the tab. A window a person renamed, its name no longer its @fleet-name, is left
 # alone. A window from before @fleet-repo is fleet's when it is named for its pane's repo.
 name_windows() {
   local s=$1 wid n r fn b entry want
   declare -A repo_of=() seen=()
-  while IFS=$'\t' read -r entry r; do repo_of[$entry]=$r; done < <(jq -r '.[] | select(.status == "ok") | .rows[]?
-    | [(.entry // ""), ((.repo // "") | split("/") | last)] | @tsv' "$(sdir "$s")/fleet.json" 2>/dev/null)
+  while IFS=$'\t' read -r entry r; do repo_of[$entry]=$r; done < <(entry_repos "$s")
   # \037, as below: read would collapse a run of empty tab-separated options
   while IFS=$'\037' read -r wid n r fn b entry; do
     [ -n "$entry" ] && [ -z "${seen[$wid]:-}" ] || continue
@@ -284,7 +289,7 @@ name_windows() {
     want=$(win_label "$r" "$b")
     [ "$want" != "$n" ] || continue
     tmx rename-window -t "$wid" "$want" \; set -w -t "$wid" @fleet-name "$want"
-    SYNC_RENAMED=$((SYNC_RENAMED + 1))
+    SYNC_RENAMED=$((${SYNC_RENAMED:-0} + 1))   # a sync's count; a tick has none
   done < <(tmx list-panes -s -t "=$s" \
     -F $'#{window_id}\037#{window_name}\037#{@fleet-repo}\037#{@fleet-name}\037#{@fleet-branch}\037#{@fleet-entry}' 2>/dev/null)
 }
@@ -527,18 +532,20 @@ sync_layout() {
 # each other one moves to a window of its own right after it, with its host and repo tags, named for its repo and
 # its own branch. A pane that isn't an agent's (a shell opened by hand) stays where it is.
 split_windows() {
-  local s=$1 wid pid n h c r b prev='' dst='' new
-  while IFS=$'\037' read -r wid pid n h c r b; do
+  local s=$1 wid pid n h c r b entry prev='' dst='' new
+  declare -A repo_of=()
+  while IFS=$'\t' read -r entry r; do repo_of[$entry]=$r; done < <(entry_repos "$s")
+  while IFS=$'\037' read -r wid pid n h c r b entry; do
     # the window's first agent pane stays; the others go after it, in pane order
     if [ "$wid" != "$prev" ]; then prev=$wid dst=$wid; continue; fi
-    r=${r:-$n}; n=$(win_label "$r" "$b")
+    r=${r:-${repo_of[$entry]:-$n}}; n=$(win_label "$r" "$b")
     new=$(tmx break-pane -d -a -s "$pid" -t "$dst" -n "$n" -P -F '#{window_id}') || continue
     dst=$new
     tmx set -w -t "$new" @fleet-host "$h" \; set -w -t "$new" @fleet-host-colour "$c" \; \
       set -w -t "$new" @fleet-repo "$r" \; set -w -t "$new" @fleet-name "$n"
     SYNC_MOVED=$((SYNC_MOVED + 1))
   done < <(tmx list-panes -s -t "=$s" -F $'#{window_id}\037#{pane_id}\037#{window_name}\037#{@fleet-host}\037#{@fleet-host-colour}\037#{@fleet-repo}\037#{@fleet-branch}\037#{@fleet-entry}' |
-    awk -F '\037' '$8 != ""' | cut -d $'\037' -f 1-7)
+    awk -F '\037' '$8 != ""')
 }
 
 # --- hint ----------------------------------------------------------------

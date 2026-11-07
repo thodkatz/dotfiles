@@ -250,14 +250,17 @@ set_branch() { jq --arg e "$2" --arg b "$3" 'map(if .entry == $e then .branch = 
   [[ "$(wins)" == *$'\nnixed|nixed|e-nixed-stall\n'* ]]
 }
 
-@test "tick: a hop to another branch renames its window, no prefix F" {
+@test "tick: a hop to another branch renames its window, every window that hopped, no prefix F" {
   "$FLEET" up
   wait_attached e-nixed-1
   wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
+  wid2=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-stall" { print $1 }')
+  set_branch 192.168.122.51 e-nixed-stall impl/w
   jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" | .prev = "e-nixed-1" else . end)' \
     "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   "$FLEET" _tick fleet
   [ "$(t display -p -t "$wid" '#W|#{@fleet-entry}')" = 'nixed/z|e-nixed-1b' ]
+  [ "$(t display -p -t "$wid2" '#W')" = 'nixed/w' ]
 }
 
 @test "sync: a window a person renamed keeps its name; its repo's next session still opens beside it" {
