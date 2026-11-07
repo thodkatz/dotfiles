@@ -143,7 +143,7 @@ wait_attached() {
   [[ "$output" == *'e-nixed-1|● #b8bb26 main alive'* ]]
   [[ "$output" == *'e-am-1|● #b8bb26 ? alive'* ]]
   wait_attached e-nixed-1
-  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r winch" "$FLEET_FIXTURES/ssh.log"
+  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r ctrl_l" "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "sync: idempotent, adds new entries, leaves untagged panes alone (D8)" {
@@ -286,6 +286,40 @@ mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktr
   # A later sync keeps it, adds no second pane on its socket.
   "$FLEET" sync -t fleet
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
+}
+
+# prefix c: a window of its own whose shell runs ssh into guest $1, as a person opens one. Prints the pane's id.
+ssh_window() {
+  local p; p=$(ssh_pane "$1"); t kill-pane -t "$p"
+  t new-window -d -t =fleet: -P -F '#{pane_id}' "$(command -v bash) -c '$BATS_TEST_TMPDIR/bin/ssh -o ConnectTimeout=5 agentvm@$1'"
+}
+
+@test "sync -p: a pane alone in its window (prefix c) gets the window a new pane would: its repo's name, its host" {
+  "$FLEET" up
+  pane=$(ssh_window 192.168.122.51)
+  sleep 0.3
+  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
+  run "$FLEET" sync -t fleet -p "$pane"
+  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
+  run t display -p -t "$pane" '#{window_name}|#{@fleet-host}|#{@fleet-entry}'
+  [ "$output" = 'nixed|nixos|e-mine' ]
+  [ -n "$(t display -p -t "$pane" '#{@fleet-host-colour}')" ]
+  # a second round, as the first: prefix c, claudes -d, prefix F
+  pane2=$(ssh_window 192.168.122.51)
+  sleep 0.3
+  add_row 192.168.122.51 "$(mine_row e-mine2 2000)"
+  run "$FLEET" sync -t fleet -p "$pane2"
+  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
+  [ "$(t display -p -t "$pane2" '#{window_name}|#{@fleet-entry}')" = 'nixed|e-mine2' ]
+}
+
+@test "sync -p: a pane split into another window leaves that window's name" {
+  "$FLEET" up
+  pane=$(ssh_pane 192.168.122.51)
+  sleep 0.3
+  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
+  "$FLEET" sync -t fleet -p "$pane"
+  [ "$(t display -p -t =fleet:overview '#{window_name}')" = overview ]
 }
 
 @test "sync -p: of two new sessions a person started, the newest; the other gets its own pane" {

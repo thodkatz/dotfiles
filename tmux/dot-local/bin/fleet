@@ -435,16 +435,24 @@ sync_layout() {
   if [ -n "$here" ] && IFS=$'\037' read -r here_s here_tags pid < <(tmx display -p -t "$here" \
       $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}\037#{pane_pid}' 2>/dev/null) &&
     [ "$here_s" = "$s" ] && [ -z "$here_tags" ] && ip=$(pane_guest_ip "$pid" "$json"); then
-    while IFS=$'\t' read -r entry sock; do
+    while IFS=$'\t' read -r entry sock host repo; do
       [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
       tmx respawn-pane -k -t "$here" "$(self_cmd _attach "$ip" "$sock")" || break
       paned[$entry]=1 sockpaned["$ip $sock"]=1 SYNC_HERE=1
       tmx set -p -t "$here" @fleet-entry "$entry" \; set -p -t "$here" @fleet-sock "$ip $sock" 2>/dev/null
       tag_pane "$here" "${newrow[$entry]%%$'\t'*}" "${newrow[$entry]#*$'\t'}"
+      # alone in its window (prefix c's), the window is named and tagged as a new one's: for its repo, with its host;
+      # a pane split into another window leaves that window's name
+      if [ "$(tmx display -p -t "$here" '#{window_panes}')" = 1 ]; then
+        tmx rename-window -t "$here" "$repo" \; set -w -t "$here" @fleet-host "$host" \; \
+          set -w -t "$here" @fleet-host-colour "${hcol[$host]:-}" 2>/dev/null
+      fi
       break
-    done < <(jq -r --arg ip "$ip" '.[] | select(.ip == $ip and .status == "ok") | .rows[]
+    done < <(jq -r --arg ip "$ip" 'def q: if . == null or . == "" then "?" else tostring end;
+      .[] | . as $g | select(.ip == $ip and .status == "ok") | .rows[]
       | select(.unattended == 0 and ((.continue // "") | startswith("dtach -a ")))
-      | [(.started // "0" | tostring), .entry, (.continue | split(" ")[2])] | @tsv' "$json" | sort -t $'\t' -k1,1nr | cut -f 2-)
+      | [(.started // "0" | tostring), .entry, (.continue | split(" ")[2]), $g.host, ((.repo // "") | split("/") | last | q)]
+      | @tsv' "$json" | sort -t $'\t' -k1,1nr | cut -f 2-)
   fi
 
   # A window for each attachable entry that has no pane, on a socket that has none, by host then repo: named for its
@@ -655,10 +663,12 @@ cmd_status() {
 # exits 255), the pane stays, marked @fleet-ended, until the next sync, which
 # closes it or, if the entry is still attachable, attaches afresh; or, when its
 # session handed over to a successor on a new socket, until the hint loop's next
-# tick respawns it attached to that.
+# tick respawns it attached to that. -r ctrl_l, not winch: an attach at the
+# size the session already has sends a SIGWINCH Claude Code draws nothing for,
+# so a pane on an idle session stayed black (2026-11-07); ^L redraws it.
 cmd__attach() {
   local ip=$1 sock=$2 rc
-  ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r winch"
+  ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "dtach -a $(printf %q "$sock") -e '^]' -r ctrl_l"
   rc=$?
   # shellcheck disable=SC2029  # $sock is quoted here on purpose, for the remote shell
   if [ "$rc" != 255 ] && ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "test -S $(printf %q "$sock")" </dev/null 2>/dev/null; then exit 0; fi
