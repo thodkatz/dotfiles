@@ -274,4 +274,4 @@ shellcheck tmux/dot-local/bin/fleet   # not clean today (SC1010, SC2015, SC2034)
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a
-`stow -R`, `prefix r` / `prefix F`, or nixed's switch for a plugin change). No quota-heavy runs.
+`stow -R`, `prefix r` / `prefix F`, or nixed's switch for a plugin change). No heavy resource requests.
