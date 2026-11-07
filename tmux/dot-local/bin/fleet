@@ -98,11 +98,14 @@ guests() {
   rm -rf "$tmp"
 }
 
-# The script a guest runs (`bash -s -- json|table`): find the agent-supervise
+# The script a guest runs (`bash -s -- json|table|accounts`): find the agent-supervise
 # user unit's status.sh and AGENT_SUPERVISE_REPOS, then run it. Not `bash -l`:
 # NixOS's /etc/profile resets PATH. json (discover) skips the forge calls, most
 # of a run's time, for fields fleet doesn't read; --json comes first, as an older
-# status.sh reads only $1 and ignores the rest.
+# status.sh reads only $1 and ignores the rest. accounts runs the same install's
+# `methodology accounts --json` with the unit's AGENT_CONTINUE_BINS; an install
+# from before it has no `accounts)` branch (the exit status can't tell: an unknown
+# command and a failing view both exit 1), and a view that fails says why.
 probe_script() {
   cat <<'EOF'
 mode=${1:-table}
@@ -121,13 +124,22 @@ envval() {
   [ -n "$v" ] || v=$(tr ' ' '\n' <<<"$env" | sed -n "s/^$1=//p" | head -n 1)
   printf '%s' "$v"
 }
+if [ "$mode" = accounts ]; then
+  m=${path%/*}/../methodology
+  [ -e "$m" ] && grep -q '^ *accounts)' "$m" || { echo fleet:no-accounts; exit 0; }
+  err=$(mktemp) || exit 1
+  if ! AGENT_CONTINUE_BINS=$(envval AGENT_CONTINUE_BINS) TMPDIR=$(envval TMPDIR) "$m" accounts --json 2>"$err"; then
+    echo "fleet:accounts-failed $(head -n 1 "$err")"
+  fi
+  rm -f "$err"; exit 0
+fi
 status_sh=${path%/*}/status.sh
 AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json --no-forge)
 EOF
 }
 
-# timeout: a hung status.sh must not hold up a sync.
-probe() { mux_dir; probe_script | timeout "${FLEET_PROBE_TIMEOUT:-15}" ssh "${MUX_OPTS[@]}" "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
+# timeout ($3, else FLEET_PROBE_TIMEOUT): a hung status.sh must not hold up a sync.
+probe() { mux_dir; probe_script | timeout "${3:-${FLEET_PROBE_TIMEOUT:-15}}" ssh "${MUX_OPTS[@]}" "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$1" bash -s -- "$2" 2>/dev/null; }
 
 # A guest's status.sh table, or why there is none.
 status_of() {
@@ -172,6 +184,86 @@ attachable() {
     | [(.entry | q), $g.host, $g.guest, $g.ip, ((.repo // "") | split("/") | last | q),
        (.branch | q), (.live | q), (.continue | split(" ")[2])]
     | join("\t")' "$1"
+}
+
+# --- accounts ------------------------------------------------------------
+
+# The guests' accounts reports, one {guest, report} or {guest, why} line each on stdin -> one
+# {version: 1, accounts, missing: [{guest, why}]} (agent-methodology's accounts view, D10). Rows with one (provider,
+# id, meter) are one row, in the order first seen, whose fields come from the newest observed_at (an ISO string:
+# every report writes Z and whole seconds, so it sorts as time; null is older than any) and whose bins and sessions
+# are all the rows' (sessions null, untracked, only when every row's is), each tagged with its host. A
+# `<host>:<bin>` row whose identity is unknown is its guest's alone. A report of another version is missing.
+accounts_merge() {
+  jq -sc 'def uniq: reduce .[] as $x ([]; if index([$x]) then . else . + [$x] end);
+    [.[] | select(.report.version? == 1) | .guest as $g | (.report.host // $g) as $h | .report.accounts[]
+      | . + {bins: [.bins[]? | .host //= $h], sessions: (if .sessions == null then null else [.sessions[] | .host //= $h] end),
+             _k: ([.provider, .id, .meter] + if (.id | test("^[^:]+:")) and (.label | endswith("(identity unknown)"))
+                  then [$g] else [] end)}] as $rows
+    | {version: 1,
+       accounts: [($rows | map(._k) | uniq)[] as $k | [$rows[] | select(._k == $k)] as $same
+         | ($same | sort_by(.observed_at // "") | last)
+           + {bins: ([$same[].bins[]] | uniq),
+              sessions: (if all($same[]; .sessions == null) then null else [$same[].sessions // [] | .[]] end)}
+         | del(._k)],
+       missing: [.[] | if .why then {guest, why} elif .report.version != 1
+         then {guest, why: "unknown report version \(.report.version)"} else empty end]}'
+}
+
+# One guest's accounts report as a merge line: its report, or why there is none.
+accounts_of() {
+  local g=$1 ip=$2 out why
+  if [ "$ip" = - ] || ! out=$(probe "$ip" accounts "${FLEET_ACCOUNTS_TIMEOUT:-90}"); then why=unreachable
+  elif [ "$out" = fleet:no-supervisor ]; then why="no supervisor"
+  elif [ "$out" = fleet:no-accounts ]; then why="no methodology accounts (update the install)"
+  elif [[ $out == fleet:accounts-failed* ]]; then why="methodology accounts failed: ${out#fleet:accounts-failed }"
+  elif jq -e 'type == "object"' >/dev/null 2>&1 <<<"$out"; then jq -c --arg g "$g" '{guest: $g, report: .}' <<<"$out"; return
+  else why="no accounts report"; fi
+  jq -nc --arg g "$g" --arg w "$why" '{guest: $g, why: $w}'
+}
+
+# The merged report as a table, as agent-methodology's `methodology accounts` prints one host's, with HOSTS and each
+# bin as <host>/<bin>: a header naming the unreachable guests, the rows, then one line per other missing guest.
+accounts_table() {
+  jq -r --argjson now "$(date +%s)" '
+    def local: fromdateiso8601 | if strflocaltime("%F") == ($now | strflocaltime("%F")) then strflocaltime("%H:%M")
+      else strflocaltime("%a %H:%M") end;
+    def age: if . >= 86400 then "\(. / 86400 | floor)d" elif . >= 3600 then "\(. / 3600 | floor)h"
+      else "\(. / 60 | floor)m" end;
+    ([.missing[] | select(.why == "unreachable") | .guest] | join(", ")) as $down
+    | "fleet accounts · \($now | strflocaltime("%H:%M"))" + if $down != "" then " · unreachable: \($down)" else "" end,
+    ([["ACCOUNT", "METER", "QUOTA", "WINDOWS", "OBSERVED", "SOURCE", "BINS", "SESSIONS", "HOSTS"]]
+     + [.accounts[] | [.label, .meter, .quota,
+        ([.windows[] | "\(.name) \(.used_percent)% " + if .resets_at then "(\(.resets_at | local))" else "(reset unknown)" end]
+          | join(" · ") | if . == "" then null else . end) // .why // "-",
+        (if .observed_at then [0, $now - (.observed_at | fromdateiso8601)] | max | age else "-" end)
+          + if .guessed then " guessed" else "" end,
+        .source // "-", ([.bins[] | "\(.host)/\(.bin)"] | join(",")),
+        (if .sessions == null then "untracked" else "\(.sessions | length)" end),
+        ([.bins[].host] | unique | join(","))] | map(tostring)]
+     | (transpose | map(map(length) | max)) as $w
+     | .[] | [to_entries[] | .value + (" " * ($w[.key] - (.value | length)))] | join("  ") | sub(" +$"; "")),
+    (.missing[] | select(.why != "unreachable") | "\(.guest): \(.why)")'
+}
+
+# Pane command: every guest's accounts merged, every FLEET_ACCOUNTS_INTERVAL seconds; --once prints it once.
+cmd__accounts() {
+  local out tmp h g ip i
+  while :; do
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/fleet-accounts.XXXXXX") || return 1
+    i=0
+    while read -r h g ip; do
+      i=$((i + 1))
+      accounts_of "${g/#-/$h}" "$ip" > "$tmp/$(printf %04d "$i")" &
+    done < <(guests)
+    wait
+    out=$(cat "$tmp"/* 2>/dev/null | accounts_merge | accounts_table)
+    rm -rf "$tmp"
+    [ "${1:-}" = --once ] && { printf '%s\n' "$out"; return 0; }
+    clear
+    printf '%s\n' "$out"
+    sleep "${FLEET_ACCOUNTS_INTERVAL:-60}"
+  done
 }
 
 # --- session -------------------------------------------------------------
@@ -427,6 +519,17 @@ sync_layout() {
     [ "$v" = 4 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 4
   done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
 
+  # The accounts window, one pane right after the overview, tagged @fleet-accounts with its loop's version: a pane an
+  # older fleet started is restarted, as the overview's are.
+  local acc
+  acc=$(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-accounts}' 2>/dev/null | awk -F '\037' '$2 != "" { print; exit }')
+  if [ -z "$acc" ]; then
+    pid=$(tmx new-window -d -a -t "=$s:overview" -n accounts -P -F '#{pane_id}' "$(self_cmd _accounts)") &&
+      tmx set -p -t "$pid" @fleet-accounts 1
+  elif [ "${acc#*$'\037'}" != 1 ]; then
+    tmx respawn-pane -k -t "${acc%%$'\037'*}" "$(self_cmd _accounts)" \; set -p -t "${acc%%$'\037'*}" @fleet-accounts 1
+  fi
+
   # A window made before the host tags, named <host>·<repo>: tagged with its host and repo, its name fleet's, so
   # name_windows below renames it, whether or not this sync adds a pane to it (prefix r alone leaves it as it was).
   while IFS=$'\t' read -r wid n; do
@@ -479,7 +582,7 @@ sync_layout() {
   # attended (unattended 0) attachable entry with no pane, never the supervisor's unattended ones.
   local here_s here_tags
   if [ -n "$here" ] && IFS=$'\037' read -r here_s here_tags pid < <(tmx display -p -t "$here" \
-      $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}\037#{pane_pid}' 2>/dev/null) &&
+      $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}#{@fleet-res-guest}#{@fleet-accounts}\037#{pane_pid}' 2>/dev/null) &&
     [ "$here_s" = "$s" ] && [ -z "$here_tags" ] && ip=$(pane_guest_ip "$pid" "$json"); then
     while IFS=$'\t' read -r entry sock host repo; do
       [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
@@ -829,6 +932,8 @@ main() {
     _attach) cmd__attach "$@" ;;
     _hintloop) cmd__hintloop "$@" ;;
     _tick) cmd__tick "$@" ;;
+    _accounts) cmd__accounts "$@" ;;
+    _accounts-merge) accounts_merge ;;
     ls) guests ;;
     status) [ $# -ge 1 ] || die "usage: fleet status GUEST"; cmd_status "$1" ;;
     doctor) cmd_doctor ;;

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Fake methodology dispatcher: shows what the probe script ran accounts with;
+# fails as a broken view does when $FLEET_FIXTURES/accounts-fails exists.
+case $1 in
+  accounts)
+    [ ! -e "$FLEET_FIXTURES/accounts-fails" ] || { echo "accounts.py: no such file" >&2; echo more >&2; exit 1; }
+    echo "bins=$AGENT_CONTINUE_BINS args=$*" ;;
+  *) echo "methodology: unknown command $1" >&2; exit 1 ;;
+esac

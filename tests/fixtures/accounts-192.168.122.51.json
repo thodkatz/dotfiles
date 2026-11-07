@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "host": "agentvm-repos",
+  "generated_at": "2026-11-07T11:30:00Z",
+  "accounts": [
+    {"provider": "claude", "id": "uuid-a", "label": "a@example.com", "meter": "default", "quota": "no",
+     "why": "usage limit", "windows": [], "observed_at": "2026-11-07T10:00:00Z", "source": "limit", "guessed": false,
+     "bins": [{"host": "agentvm-repos", "bin": "claude2"}],
+     "sessions": [{"host": "agentvm-repos", "repo": "nixed", "branch": "main", "worktree": "/workspace/nixed"}]},
+    {"provider": "claude", "id": "agentvm:claude4", "label": "claude4 (identity unknown)", "meter": "default",
+     "quota": "unknown", "why": "no observation on this host", "windows": [], "observed_at": null, "source": null,
+     "guessed": false, "bins": [{"host": "agentvm-repos", "bin": "claude4"}], "sessions": []},
+    {"provider": "codex", "id": "acct-c", "label": "c@example.com", "meter": "default", "quota": "yes", "why": null,
+     "windows": [{"name": "5h", "used_percent": 10, "resets_at": null}], "observed_at": "2026-11-07T09:00:00Z",
+     "source": "app-server", "guessed": false, "bins": [{"host": "agentvm-repos", "bin": "codex"}], "sessions": null}
+  ]
+}

@@ -69,7 +69,7 @@ cd ~/repos/dotfiles && git pull
 an older fleet (`nixos·nixed` becomes `nixed`), retags agent panes (until it runs, their borders show the bare
 entry id), and restarts the overview panes and the hint loop an older fleet started, since a pull changes the file,
 not the processes already running it. (That restart keys on a version stamp, `@fleet-overview` on each
-overview pane and the second field of `hintloop.pid`: a change to what either loop does, or how often, bumps its
+overview pane, `@fleet-accounts` on the accounts pane and the second field of `hintloop.pid`: a change to what one of the loops does, or how often, bumps its
 stamp in `fleet`, or prefix F leaves the old loop running.) If a reload leaves stale styling behind, `tmux kill-server` starts clean;
 resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
@@ -80,7 +80,7 @@ guests only). Inside: `prefix F` syncs panes with the running sessions, `C-]` de
 ### fleet: every agent session in one tmux session
 
 `fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
-supervisor table (`status.sh`, refreshed every 15 s), then one window per agent session running under dtach, attached
+supervisor table (`status.sh`, refreshed every 15 s), window `accounts` every account's quota across them, then one window per agent session running under dtach, attached
 over ssh (named for its repo and what it works on, its branch's last part, e.g. `agent-methodology/accounts-view-2`,
 renamed when a hop changes it; its tab coloured for its host, a repo's windows side by side; a tab you rename stays
 as you named it). The hosts are in `~/.config/fleet/hosts` (one ssh destination
@@ -114,6 +114,7 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
 | `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; between syncs, every 20 s, a pane follows its session's hops (hand-off, usage-limit move, resume) in place, nothing else changes on its own |
 | overview window | one row per guest: its `status.sh` table, and to its right its resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
+| accounts window | every account's quota across the guests, refreshed every 60 s (`FLEET_ACCOUNTS_INTERVAL`): each guest's `methodology accounts --json`, merged into one table, an account seen on several guests one row (its newest observation), each bin as `<guest>/<bin>`, HOSTS where it is logged in; the header names unreachable guests, and a guest whose install has no `accounts` says `update the install` |
 | `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |
 | `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
 | status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |

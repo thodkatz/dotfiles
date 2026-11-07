@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "host": "agentvm-thinkrepos",
+  "generated_at": "2026-11-07T11:30:00Z",
+  "accounts": [
+    {"provider": "claude", "id": "uuid-a", "label": "a@example.com", "meter": "default", "quota": "yes", "why": null,
+     "windows": [{"name": "5h", "used_percent": 30, "resets_at": "2026-11-07T15:00:00Z"},
+                 {"name": "weekly", "used_percent": 12, "resets_at": "2026-11-12T08:00:00Z"}],
+     "observed_at": "2026-11-07T11:00:00Z", "source": "status-screen", "guessed": false,
+     "bins": [{"host": "agentvm-thinkrepos", "bin": "claude"}], "sessions": []},
+    {"provider": "claude", "id": "agentvm:claude4", "label": "claude4 (identity unknown)", "meter": "default",
+     "quota": "unknown", "why": "no observation on this host", "windows": [], "observed_at": null, "source": null,
+     "guessed": false, "bins": [{"host": "agentvm-thinkrepos", "bin": "claude4"}], "sessions": []},
+    {"provider": "codex", "id": "acct-c", "label": "c@example.com", "meter": "default", "quota": "unknown",
+     "why": "codex app-server timed out", "windows": [], "observed_at": null, "source": null, "guessed": false,
+     "bins": [{"host": "agentvm-thinkrepos", "bin": "codex"}], "sessions": null}
+  ]
+}

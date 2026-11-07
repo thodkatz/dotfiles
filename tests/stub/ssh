@@ -20,6 +20,12 @@ case $cmd in
     if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor
     elif [ "$cmd" = 'bash -s -- json' ]; then cat "$fx/guest-$dest.json"
     else echo "table of $dest"; fi ;;
+  'bash -s -- accounts')
+    cat >/dev/null
+    [ ! -e "$fx/hang-$dest" ] || exec sleep 600
+    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor
+    elif [ -e "$fx/noacct-$dest" ]; then echo fleet:no-accounts
+    else cat "$fx/accounts-$dest.json"; fi ;;
   'dtach -a '*)
     [ ! -e "$fx/attach-lost" ] || exit 255
     [ -e "$fx/attach-exits" ] && exit 0; exec sleep 600 ;;
