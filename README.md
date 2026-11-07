@@ -81,7 +81,9 @@ guests only). Inside: `prefix F` syncs panes with the running sessions, `C-]` de
 
 `fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
 supervisor table (`status.sh`, refreshed every 15 s), then one window per agent session running under dtach, attached
-over ssh (named for its repo, its tab coloured for its host, a repo's windows side by side). The hosts are in `~/.config/fleet/hosts` (one ssh destination
+over ssh (named for its repo and what it works on, its branch's last part, e.g. `agent-methodology/accounts-view-2`,
+renamed when a hop changes it; its tab coloured for its host, a repo's windows side by side; a tab you rename stays
+as you named it). The hosts are in `~/.config/fleet/hosts` (one ssh destination
 per line, from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
