@@ -11,10 +11,12 @@ Due soon, on any track: what someone said to do "in the next session", and what 
 start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
+- The laptop try of layout C (agent-methodology's slice 3b, 3b.2 step 1 and 3b.3 step 1): does `agent-deck session
+  focus --remote <guest> <id> --attach` open a remote's session in the TUI (`follow.log` in fleet's state dir says what each
+  hop did; a no-op `--attach` means `FOLLOW_ARGS=()`); the look with both guests; the hint's counts against `methodology status`; whether deck's rows show
+  `am-unattended` — from PR #7's rulings; waits on the user: a `git pull`, `stow -R tmux agent-deck` and `fleet` on the
+  laptop.
 
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
-- Split the tmux-fleet spec (`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`, 412 lines) into a directory,
-  a `README.md` index plus one file per section (`spec-and-plan-layout.md`, *Splitting an existing document*) — from PR #4's
-  review, waits because it is a `git mv`-and-links change of its own, not this PR's.

@@ -50,7 +50,6 @@ tmux                                  # then prefix I installs the plugins
 | `prefix f` | sessionx: fuzzy-jump to any session or window, with preview |
 | `prefix Tab` | extrakto: pick a hash, path, URL or `#PR` from the pane's text |
 | `y` (copy mode) | tmux-yank: copy to the system clipboard |
-| `prefix F` | `fleet sync` (below) |
 | `prefix h/j/k/l`, `"`, `%`, `c`, `r` | as before: vi pane moves, splits and windows in the current directory, reload |
 
 tmux-resurrect saves every 15 minutes (continuum) and the laptop restores the last save when its tmux server
@@ -68,34 +67,30 @@ cd ~/repos/dotfiles && git pull
 mkdir -p ~/.config/agent-deck && stow -t "$HOME" --dotfiles -R tmux agent-deck   # links any new file; edits to linked ones are live already
 agent-deck-install                    # once, and again after a pin bump
 # in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
-# and prefix F in the fleet session: its tabs, pane borders, overview and hint take the new look
 
 # Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
 cd ~/repos/dotfiles && git pull
-# a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux:
-# prefix r, and prefix F in fleet-<host>
+# a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux: prefix r
 ```
 
-`prefix r` restyles everything already open; `prefix F` then brings fleet's session forward: it renames tabs from
-an older fleet (`nixos·nixed` becomes `nixed`), retags agent panes (until it runs, their borders show the bare
-entry id), and restarts the overview panes and the hint loop an older fleet started, since a pull changes the file,
-not the processes already running it. (That restart keys on a version stamp, `@fleet-overview` on each
-overview pane and the second field of `hintloop.pid`: a change to what either loop does, or how often, bumps its
-stamp in `fleet`, or prefix F leaves the old loop running.) If a reload leaves stale styling behind, `tmux kill-server` starts clean;
-resurrect brings your own sessions back, and `fleet` rebuilds its own.
+`prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
+reaches it within 30 s, no restart. A session an older fleet built (one window per agent session, kept in step by
+`prefix F`) is rebuilt in the new layout by running `fleet` once, from outside that session (from inside it, `fleet`
+would kill the session it runs in; detach first, or run it in another session). If a reload leaves stale styling
+behind, `tmux kill-server` starts clean; resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
-guests only). Inside: `prefix F` syncs panes with the running sessions, `C-]` detaches from an agent pane, and
+guests only). Inside: window `deck` lists and attaches the sessions, window `overview` shows what needs you, and
 `fleet doctor` says what is missing when something doesn't show. Details in *fleet* below.
 
 ### fleet: every agent session in one tmux session
 
-`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` shows each microVM guest's
-supervisor table (`status.sh`, refreshed every 15 s), then one window per agent session running under dtach, attached
-over ssh (named for its repo and what it works on, its branch's last part, e.g. `agent-methodology/accounts-view-2`,
-renamed when a hop changes it; its tab coloured for its host, a repo's windows side by side; a tab you rename stays
-as you named it). The hosts are in `~/.config/fleet/hosts` (one ssh destination
-per line, from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
+`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet` with two windows (layout C, agent-methodology's
+D20): window `deck` runs Agent Deck's TUI, each microVM guest one of its remotes (`agent-deck/dot-config/agent-deck/
+config.toml`), where you list the agent sessions and attach one; window `overview` shows each guest's open inbox
+items and supervisor rows, refreshed every 30 s, with the first guest's resources to its right. The hosts are in
+`~/.config/fleet/hosts` (one ssh destination per line, from this package). On a host itself, `fleet --local` shows
+that host's guests in `fleet-<host>`.
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
 hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
@@ -123,22 +118,15 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 | | |
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; between syncs, every 20 s, a pane follows its session's hops (hand-off, usage-limit move, resume) in place, nothing else changes on its own |
-| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
-| overview2 window | after overview, refreshed every 30 s: each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs) and its status row count; the first guest's btop to its right |
-| overview window | one row per guest: its `status.sh` table, and to its right its resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
-| `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |
-| `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
-| status bar `nixos ●3 ◆2 ✉1  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked, or asking once the supervisor reports deck's activity), `✉` open inbox items (blue, left out at 0); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
+| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. When the session you watched hands off (its successor's `prev` names it, and deck marked it viewed), the overview's next round opens the successor in the TUI, if the TUI is back on its list. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
+| overview window | each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs), then its status rows: `<branch> <mode> <activity> [kind] [gated #n]`; to its right the first guest's resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
+| status bar `nixos ●3 ◆1 ✉1` | per host, in its colour: `●` live sessions (deck's activity working, idle or asking), `◆` asking, `✉` open inbox items (`◆` and `✉` left out at 0); `✗`: host unreachable. Rewritten by the overview's loop |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
-Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last 20 s refresh): `●` alive
-(green), `○` waiting for a usage-limit reset, `◐` stalled (yellow), `◆` blocked on you (purple), `✗` dead (red),
-`✓` done, `∅` gone (worktree removed), `·` ended early (grey).
-Overview panes show their guest in its host's colour, the host, its `●`/`◆` counts and when it last refreshed, and
-each `status.sh` row in its glyph's colour. Your
-own panes show their command and directory; the focused pane's border is blue. The theme is gruvbox, written into
-`tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+Which session runs unattended shows in the overview's rows (`unattended`) and, inside each session, its own status
+line. Your own panes show their command and directory on their border; the focused pane's border is blue. The theme
+is gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect
+restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).

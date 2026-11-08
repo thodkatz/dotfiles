@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Stub agent-deck for tests/fleet.bats. No arguments: the TUI, which attaches the remote session $FLEET_FIXTURES/
+# deck-attach names ("<ip> <id>") over ssh, as deck does, until the file changes. `list --json` and `session annotate
+# <id> --json` (the probe script's reads on a guest) answer from deck-list.json and deck-viewed (one viewed id a line).
+# Anything else is logged to deck.log (and fails, with --attach, while deck-fail-attach exists).
+fx=$FLEET_FIXTURES
+case "$*" in
+  '')
+    while :; do
+      if read -r ip id < "$fx/deck-attach" 2>/dev/null; then ssh -t "agentvm@$ip" agent-deck session attach "$id"
+      else sleep 0.1; fi
+    done ;;
+  'list --json') cat "$fx/deck-list.json" ;;
+  'session annotate '*' --json')
+    if grep -qx "$3" "$fx/deck-viewed" 2>/dev/null; then echo '{"hints": {"am.viewed": "1"}}'; else echo '{"hints": {}}'; fi ;;
+  *) echo "agent-deck $*" >> "$fx/deck.log"
+    # deck-fail-attach: a focus with --attach fails
+    [[ ! -e "$fx/deck-fail-attach" || "$*" != *--attach* ]] ;;
+esac

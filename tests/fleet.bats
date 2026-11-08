@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# fleet against a private tmux server and stub ssh/systemctl/ip (tests/stub),
+# fleet against a private tmux server and stub ssh/systemctl/ip/agent-deck (tests/stub),
 # answering from a copy of tests/fixtures. Run from the repo root: bats tests/
 
 setup() {
@@ -12,46 +12,29 @@ setup() {
   export FLEET_STATE=$BATS_TEST_TMPDIR/state
   export FLEET_TMUX_SOCKET=fleet-test-$$-$BATS_TEST_NUMBER
   export FLEET_TMUX_CONF=/dev/null
-  export FLEET_DECK_CMD=agent-deck-not-in-tests FLEET_NO_HINTLOOP=1 FLEET_HINT_INTERVAL=3600 FLEET_OVERVIEW_INTERVAL=3600
+  export FLEET_DECK_CMD=agent-deck-not-in-tests FLEET_DECK_CONFIG=$FLEET_FIXTURES/deck-config.toml
+  export FLEET_NO_LOOP=1 FLEET_OVERVIEW_INTERVAL=3600
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.agentvm key leaks in
   mkdir -p "$HOME"
   unset AGENTVM_KEY
   unset TMUX TMUX_PANE
 }
 
-teardown() { tmux -L "$FLEET_TMUX_SOCKET" kill-server 2>/dev/null || true; }
+teardown() {
+  rm -f "$FLEET_FIXTURES/deck-attach"   # ends a stub TUI's attach
+  tmux -L "$FLEET_TMUX_SOCKET" kill-server 2>/dev/null || true
+}
 
 t() { tmux -L "$FLEET_TMUX_SOCKET" "$@"; }
 
-# Append one row to a guest's status.sh fixture.
-add_row() { jq --argjson r "$2" '. + [$r]' "$FLEET_FIXTURES/guest-$1.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-$1.json"; }
-drop_row() { jq --arg e "$2" 'map(select(.entry != $e))' "$FLEET_FIXTURES/guest-$1.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-$1.json"; }
-NEW_ROW='{"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "impl/y", "live": "alive", "state": "running", "kind": "", "entry": "e-nixed-2", "continue": "dtach -a /var/tmp/agent-sessions/e-nixed-2.sock -r winch"}'
-
-# An agent pane's tags for its border: entry|glyph colour branch live.
-tags() { t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-glyph} #{@fleet-colour} #{@fleet-branch} #{@fleet-live}'; }
-# list-panes -f: the windows but the two overviews.
-NOT_OV='#{&&:#{!=:#W,overview},#{!=:#W,overview2}}'
 # The hint without its tmux styles.
 plain() { sed 's/#\[[^]]*\]//g'; }
 
-entries() { t list-panes -s -t =fleet -F '#{@fleet-entry}' | grep . | sort; }
-
-# Poll up to 5 s until every agent pane has @fleet-ended set.
-wait_ended() {
+# Poll up to 5 s until the stub ssh has logged a line matching $1.
+wait_log() {
   local i
   for i in $(seq 50); do
-    [ -n "$(entries)" ] && ! t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-ended}' | grep -q '^e-.*|$' && return 0
-    sleep 0.1
-  done
-  return 1
-}
-
-# Poll up to 5 s until the attach for entry $1 has reached the stub ssh.
-wait_attached() {
-  local i
-  for i in $(seq 50); do
-    grep -q "dtach -a /var/tmp/agent-sessions/$1.sock" "$FLEET_FIXTURES/ssh.log" && return 0
+    grep -q -- "$1" "$FLEET_FIXTURES/ssh.log" 2>/dev/null && return 0
     sleep 0.1
   done
   return 1
@@ -92,7 +75,7 @@ wait_attached() {
   [ "$output" = "fleet:no-supervisor" ]
 }
 
-@test "probe script inbox-json: the inbox's items not closed, a line per key, then status.sh's JSON" {
+@test "probe script inbox-json: the inbox's items not closed, a line per key, then status.sh's JSON, then the hops" {
   export XDG_STATE_HOME=$BATS_TEST_TMPDIR/xdg
   mkdir -p "$XDG_STATE_HOME/agent-sessions"
   cp -r "$FLEET_FIXTURES/inbox-192.168.123.51" "$XDG_STATE_HOME/agent-sessions/inbox"
@@ -105,6 +88,8 @@ wait_attached() {
   ! grep -q $'^20\t' <<<"$output"
   [ "${lines[13]}" = fleet:status ]
   [ "${lines[14]}" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json --no-forge" ]
+  [ "${lines[15]}" = fleet:hops ]
+  [ "${#lines[@]}" -eq 16 ]
   touch "$FLEET_FIXTURES/unit-missing"; rm -r "$XDG_STATE_HOME/agent-sessions/inbox"
   run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
   [ "$output" = $'fleet:inbox\nfleet:status\nfleet:no-supervisor' ]
@@ -119,493 +104,78 @@ wait_attached() {
   [ "$output" = "table of 192.168.122.51" ]
 }
 
-@test "up: overview, then one window per session, named for its repo and branch, tagged with its host, in order (D6)" {
-  run "$FLEET" up
+@test "status: a hung status.sh times out as unreachable" {
+  touch "$FLEET_FIXTURES/hang-192.168.122.51"
+  FLEET_PROBE_TIMEOUT=1 run "$FLEET" status agentvm-repos
   [ "$status" -eq 0 ]
-  run t list-windows -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{window_panes}'
-  [ "$output" = $'overview|||4\noverview2|||2\nnixed/main|nixos|#8ec07c|1\nnixed/x|nixos|#8ec07c|1\nagent-methodology|thinkcentre|#fe8019|1' ]
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f "$NOT_OV"
-  [ "$output" = $'nixed/main|nixed|e-nixed-1\nnixed/x|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
-  run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
-  [ "$(grep . <<<"$output")" = $'agentvm-repos\nagentvm-thinkrepos' ]
-}
-
-@test "up: each guest's status, then its resources (btop over ssh) to its right" {
-  "$FLEET" up
-  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-res-guest}|#{@fleet-guest-host}|#{pane_left},#{pane_top}'
-  [ "${#lines[@]}" -eq 4 ]
-  [[ "${lines[0]}" == 'agentvm-repos||nixos|0,0' ]]
-  [[ "${lines[1]}" == '|agentvm-repos|nixos|'*',0' ]] && [[ "${lines[1]}" != *'|0,0' ]]
-  [[ "${lines[2]}" == 'agentvm-thinkrepos||thinkcentre|0,'* ]]
-  [[ "${lines[3]}" == '|agentvm-thinkrepos|thinkcentre|'* ]]
-  # fleet's own layout, not tiled's halves: btop 72 columns, the status table the rest
-  run t list-panes -t =fleet:overview -F '#{pane_width}'
-  [ "$output" = $'127\n72\n127\n72' ]
-  for i in $(seq 50); do grep -q 'agentvm@192.168.123.51 .*btop' "$FLEET_FIXTURES/ssh.log" && break; sleep 0.1; done
-  grep -q "ssh -t .*agentvm@192.168.122.51 .*btop" "$FLEET_FIXTURES/ssh.log"
-}
-
-@test "sync: a fleet from before the resource panes gets one beside each guest's status, once" {
-  "$FLEET" up
-  t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-res-guest}' | awk '$2 != "" { print $1 }' | while read -r p; do t kill-pane -t "$p"; done
-  [ "$(t list-panes -t =fleet:overview -F x | wc -l)" -eq 2 ]
-  "$FLEET" sync -t fleet
-  "$FLEET" sync -t fleet
-  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-res-guest}'
-  [ "$output" = $'agentvm-repos|\n|agentvm-repos\nagentvm-thinkrepos|\n|agentvm-thinkrepos' ]
-}
-
-@test "up: only dtach rows get panes, tagged and titled (D7, D15)" {
-  "$FLEET" up
-  run entries
-  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-stall' ]
-  run tags
-  [[ "$output" == *'e-nixed-1|● #b8bb26 main alive'* ]]
-  [[ "$output" == *'e-am-1|● #b8bb26 ? alive'* ]]
-  wait_attached e-nixed-1
-  grep -q "ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.122.51 dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -e '^]' -r ctrl_l" "$FLEET_FIXTURES/ssh.log"
-}
-
-@test "sync: idempotent, adds new entries, leaves untagged panes alone (D8)" {
-  "$FLEET" up
-  t split-window -d -t =fleet:2 'sleep 600'
-  before=$(t list-panes -a -F '#{pane_id}')
-  run "$FLEET" sync -t fleet
-  [ "$status" -eq 0 ]
-  [ "$(t list-panes -a -F '#{pane_id}')" = "$before" ]
-  add_row 192.168.122.51 "$NEW_ROW"
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -a -F '#{pane_id}' | wc -l)" -eq $(($(wc -l <<<"$before") + 1)) ]
-  run entries
-  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-2\ne-nixed-stall' ]
-  [ "$(t list-panes -t =fleet:2 -F '#{@fleet-entry}' | grep -c '^$')" -eq 1 ]
-}
-
-@test "sync: an ended pane whose entry is gone or no longer attachable is closed (D8)" {
-  touch "$FLEET_FIXTURES/attach-exits"
-  "$FLEET" up
-  wait_ended
-  # e-nixed-1 is gone; e-nixed-stall is now blocked (no continue): its row stays, its attach has ended all the same.
-  drop_row 192.168.122.51 e-nixed-1
-  jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  "$FLEET" sync -t fleet
-  run tags
-  [[ "$output" != *'e-nixed-1|'* ]]
-  [[ "$output" != *'e-nixed-stall|'* ]]
-}
-
-@test "sync: a live pane whose entry is now blocked stays, retitled (D8)" {
-  "$FLEET" up
-  wait_attached e-nixed-stall
-  jq 'map(if .entry == "e-nixed-stall" then .live = "blocked #9" | .state = "blocked" | .continue = "" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  "$FLEET" sync -t fleet
-  run tags
-  [[ "$output" == *'e-nixed-stall|◆ #d3869b impl/x blocked #9'* ]]
-}
-
-@test "sync: an ended pane of a still-attachable entry is replaced (D8)" {
-  touch "$FLEET_FIXTURES/attach-exits"
-  "$FLEET" up
-  wait_ended
-  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-am-1" { print $1 }')
-  rm "$FLEET_FIXTURES/attach-exits"
-  "$FLEET" sync -t fleet
-  new=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry} #{@fleet-ended}' | awk '$2 == "e-am-1"')
-  [ -n "$new" ] && [ "${new%% *}" != "$old" ]
-  [[ "$new" != *' 1' ]]
-}
-
-@test "sync: a hop (new entry, same socket) keeps its pane, retagged and retitled" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  # chain.sh's next run: a new registry entry in the same dtach, on another branch; the old entry is no row now.
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  # Before the sync, the hint already counts the hop's entry as paned: its socket has a pane.
-  run "$FLEET" hint -t fleet --refresh
-  [[ "$output" != *'↻'* ]]
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
-  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
-  [[ "$output" != *'|e-nixed-1|'* ]]
-}
-
-# The windows of the fleet session but the overview: name|@fleet-repo|@fleet-entry, one per line.
-wins() { t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f '#{&&:#{!=:#W,overview},#{@fleet-entry}}'; }
-# Set row $2's branch on guest $1 to $3.
-set_branch() { jq --arg e "$2" --arg b "$3" 'map(if .entry == $e then .branch = $b else . end)' "$FLEET_FIXTURES/guest-$1.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-$1.json"; }
-
-@test "up: a window's name is its repo and its branch's last part, at most 24 characters; the repo alone when no branch" {
-  set_branch 192.168.122.51 e-nixed-1 change/accounts-view-2
-  set_branch 192.168.122.51 e-nixed-stall impl/a-branch-name-well-past-the-limit
-  "$FLEET" up
-  run wins
-  [ "$output" = $'nixed/accounts-view-2|nixed|e-nixed-1\nnixed/a-branch-name-well-past…|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
-}
-
-@test "sync: a window follows its session's branch: a hop to another branch, a branch that changes in place" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  # a hop in the same dtach, onto another branch
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "change/next-thing" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  # the other session's worktree moved to another branch (status.sh reports the new one)
-  set_branch 192.168.122.51 e-nixed-stall impl/w
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 followed a hop, 2 renamed' ]
-  [ "$(t display -p -t "$wid" '#W|#{@fleet-name}')" = 'nixed/next-thing|nixed/next-thing' ]
-  run wins
-  [ "$output" = $'nixed/next-thing|nixed|e-nixed-1b\nnixed/w|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet, nothing to change' ]
-  # a branch status.sh no longer knows: the repo alone
-  set_branch 192.168.122.51 e-nixed-stall ''
-  "$FLEET" sync -t fleet
-  [[ "$(wins)" == *$'\nnixed|nixed|e-nixed-stall\n'* ]]
-}
-
-@test "tick: a hop to another branch renames its window, every window that hopped, no prefix F" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  wid2=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-stall" { print $1 }')
-  set_branch 192.168.122.51 e-nixed-stall impl/w
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" | .prev = "e-nixed-1" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  "$FLEET" _tick fleet
-  [ "$(t display -p -t "$wid" '#W|#{@fleet-entry}')" = 'nixed/z|e-nixed-1b' ]
-  [ "$(t display -p -t "$wid2" '#W')" = 'nixed/w' ]
-}
-
-@test "sync: a window a person renamed keeps its name; its repo's next session still opens beside it" {
-  "$FLEET" up
-  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  t rename-window -t "$wid" mine
-  set_branch 192.168.122.51 e-nixed-1 impl/other
-  add_row 192.168.122.51 "$NEW_ROW"
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 added' ]
-  [ "$(t display -p -t "$wid" '#W|#{@fleet-repo}')" = 'mine|nixed' ]
-  # grouped by @fleet-repo, not the name: the new session after the repo's last window
-  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,overview2,mine,nixed/x,nixed/y,agent-methodology,' ]
-}
-
-@test "sync: a window from before @fleet-repo, named for its repo, is tagged and named for its branch; one renamed by hand is not" {
-  "$FLEET" up
-  for e in e-nixed-1 e-nixed-stall; do
-    w=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk -v e=$e '$2 == e { print $1 }')
-    t set -wu -t "$w" @fleet-repo \; set -wu -t "$w" @fleet-name
-  done
-  t rename-window -t "$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')" nixed
-  t rename-window -t "$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-stall" { print $1 }')" by-hand
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 renamed' ]
-  run wins
-  [ "$output" = $'nixed/main|nixed|e-nixed-1\nby-hand||e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
-}
-
-@test "sync: a hop keeps a pane made before @fleet-sock, its socket read from its command" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  t set -p -u -t "$old" @fleet-sock
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-sock}'
-  [[ "$output" == *"$old|e-nixed-1b|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock"* ]]
-}
-
-@test "sync: of two live panes on one socket, the stale one is closed" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  # What a hop made of a pane without @fleet-sock: the old pane, still tagged with the hop's previous entry, and a
-  # second one on the same socket for the new entry.
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  wid=$(t list-panes -s -t =fleet -F '#{window_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  dup=$(t split-window -d -t "$wid" -P -F '#{pane_id}' 'sleep 600')
-  t set -p -t "$dup" @fleet-entry e-nixed-1b
-  t set -p -t "$dup" @fleet-sock '192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock'
-  "$FLEET" sync -t fleet
-  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-sock}'
-  [ "$(grep -c '|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1.sock$' <<<"$output")" -eq 1 ]
-  [[ "$output" == *'e-nixed-1b|'* ]]
-}
-
-@test "sync: says what it did" {
-  "$FLEET" up
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet, nothing to change' ]
-  add_row 192.168.122.51 "$NEW_ROW"
-  drop_row 192.168.122.51 e-nixed-stall
-  touch "$FLEET_FIXTURES/attach-exits"
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 added' ]
-}
-
-# A shell pane ssh'd into guest $1, as a person opens one to run `claudes -d`: a script named ssh (its process's
-# comm), its destination in its arguments, waiting; in window $2 (the overview). Prints the pane's id.
-ssh_pane() {
-  mkdir -p "$BATS_TEST_TMPDIR/bin"
-  printf '#!%s\ntrap '"'"'kill $! 2>/dev/null; exit'"'"' HUP TERM\nsleep 600 & wait\n' "$(command -v bash)" > "$BATS_TEST_TMPDIR/bin/ssh"
-  chmod +x "$BATS_TEST_TMPDIR/bin/ssh"
-  t split-window -d -t "${2:-=fleet:overview}" -P -F '#{pane_id}' "$BATS_TEST_TMPDIR/bin/ssh -o ConnectTimeout=5 agentvm@$1"
-}
-# A person's `claudes -d` run on guest .51: attended, started at $2.
-mine_row() { jq -nc --arg e "$1" --arg s "$2" '{repo: "/workspace/nixed", worktree: "/workspace/nixed", branch: "main",
-  live: "alive", state: "running", kind: "", entry: $e, unattended: 0, started: $s,
-  continue: "dtach -a /var/tmp/agent-sessions/\($e).sock -r winch"}'; }
-
-@test "sync -p: a shell pane ssh'd into a guest takes the new session a person started there" {
-  "$FLEET" up
-  pane=$(ssh_pane 192.168.122.51)
-  sleep 0.3   # its ssh is up
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
-  run "$FLEET" sync -t fleet -p "$pane"
-  [ "$status" -eq 0 ]
-  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t display -p -t "$pane" '#{@fleet-entry}|#{@fleet-sock}|#{@fleet-branch} #{@fleet-live}'
-  [ "$output" = 'e-mine|192.168.122.51 /var/tmp/agent-sessions/e-mine.sock|main alive' ]
-  wait_attached e-mine
-  # A later sync keeps it, adds no second pane on its socket.
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-}
-
-# prefix c: a window of its own whose shell runs ssh into guest $1, as a person opens one. Prints the pane's id.
-ssh_window() {
-  local p; p=$(ssh_pane "$1"); t kill-pane -t "$p"
-  t new-window -d -t =fleet: -P -F '#{pane_id}' "$(command -v bash) -c '$BATS_TEST_TMPDIR/bin/ssh -o ConnectTimeout=5 agentvm@$1'"
-}
-
-@test "sync -p: a pane alone in its window (prefix c) gets the window a new pane would: its repo's and branch's name, its host" {
-  "$FLEET" up
-  pane=$(ssh_window 192.168.122.51)
-  sleep 0.3
-  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
-  run "$FLEET" sync -t fleet -p "$pane"
-  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
-  run t display -p -t "$pane" '#{window_name}|#{@fleet-host}|#{@fleet-repo}|#{@fleet-entry}'
-  [ "$output" = 'nixed/main|nixos|nixed|e-mine' ]
-  [ -n "$(t display -p -t "$pane" '#{@fleet-host-colour}')" ]
-  # a second round, as the first: prefix c, claudes -d, prefix F
-  pane2=$(ssh_window 192.168.122.51)
-  sleep 0.3
-  add_row 192.168.122.51 "$(mine_row e-mine2 2000)"
-  run "$FLEET" sync -t fleet -p "$pane2"
-  [ "$output" = 'fleet: synced fleet: 1 attached in this pane' ]
-  [ "$(t display -p -t "$pane2" '#{window_name}|#{@fleet-entry}')" = 'nixed/main|e-mine2' ]
-}
-
-@test "sync -p: a pane split into another window leaves that window's name" {
-  "$FLEET" up
-  pane=$(ssh_pane 192.168.122.51)
-  sleep 0.3
-  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
-  "$FLEET" sync -t fleet -p "$pane"
-  [ "$(t display -p -t =fleet:overview '#{window_name}')" = overview ]
-}
-
-@test "sync -p: of two new sessions a person started, the newest; the other gets its own pane" {
-  "$FLEET" up
-  pane=$(ssh_pane 192.168.122.51)
-  sleep 0.3
-  add_row 192.168.122.51 "$(mine_row e-old 1000)"
-  add_row 192.168.122.51 "$(mine_row e-new 2000)"
-  "$FLEET" sync -t fleet -p "$pane"
-  [ "$(t display -p -t "$pane" '#{@fleet-entry}')" = e-new ]
-  [[ "$(entries)" == *e-old* ]]
-}
-
-@test "sync -p: leaves the pane when the guest has no new session a person started, or it is ssh'd elsewhere" {
-  "$FLEET" up
-  pane=$(ssh_pane 192.168.123.51)
-  sleep 0.3
-  # unattended: the supervisor's, not this person's; and the attended one is on the other guest
-  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
-  add_row 192.168.123.51 "$(jq -c '.unattended = 1 | .entry = "e-hop" | .continue = "dtach -a /var/tmp/agent-sessions/e-hop.sock -r winch"' <<<"$(mine_row x 1000)")"
-  run "$FLEET" sync -t fleet -p "$pane"
-  [ "$output" = 'fleet: synced fleet: 2 added' ]
-  [ -z "$(t display -p -t "$pane" '#{@fleet-entry}')" ]
-  [[ "$(t display -p -t "$pane" '#{pane_start_command}')" == *bin/ssh* ]]
-}
-
-@test "sync -p: an agent pane, or a pane outside the fleet session, is never taken" {
-  "$FLEET" up
-  t new-session -d -s mine "$(command -v bash)"
-  other=$(ssh_pane 192.168.122.51 =mine:)
-  sleep 0.3
-  add_row 192.168.122.51 "$(mine_row e-mine 1000)"
-  run "$FLEET" sync -t mine -p "$other"
-  [ "$output" = 'fleet: synced fleet: 1 added' ]
-  [ -z "$(t display -p -t "$other" '#{@fleet-entry}')" ]
-  agent=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  add_row 192.168.122.51 "$(mine_row e-mine2 2000)"
-  "$FLEET" sync -t fleet -p "$agent"
-  [ "$(t display -p -t "$agent" '#{@fleet-entry}')" = e-nixed-1 ]
-  [[ "$(entries)" == *e-mine2* ]]
-}
-
-# What an older fleet left of window $1: named <host>·<repo>, none of the window tags.
-old_window() {
-  t rename-window -t "$1" 'nixos·nixed' \; set -wu -t "$1" @fleet-host \; set -wu -t "$1" @fleet-host-colour \; \
-    set -wu -t "$1" @fleet-repo \; set -wu -t "$1" @fleet-name
-}
-
-@test "sync: a window made before the host tags (<host>·<repo>) is kept, renamed and tagged, a new session beside it" {
-  "$FLEET" up
-  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed/main" { print $1; exit }')
-  old_window "$wid"
-  add_row 192.168.122.51 "$NEW_ROW"
-  "$FLEET" sync -t fleet
-  run t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}'
-  [[ "$output" == *"$wid|nixed/main|nixos|#8ec07c"* ]]
-  [ "$(grep -c '|nixed/[a-z]*|nixos|#8ec07c$' <<<"$output")" -eq 3 ]
-  [ "$(grep -c nixed <<<"$output")" -eq 3 ]
-  # the new session right after the repo's other windows
-  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,overview2,nixed/main,nixed/x,nixed/y,agent-methodology,' ]
-  [ "$(t list-panes -t "$wid" -F '#{@fleet-entry}')" = e-nixed-1 ]
-}
-
-@test "sync: such a window is renamed even when the sync adds no pane to it, and says so" {
-  "$FLEET" up
-  wid=$(t list-windows -t =fleet -F '#{window_id} #W' | awk '$2 == "nixed/main" { print $1; exit }')
-  old_window "$wid"
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 renamed' ]
-  [[ "$(t list-windows -t =fleet -F '#{window_id}|#W|#{@fleet-host}|#{@fleet-host-colour}')" == *"$wid|nixed/main|nixos|#8ec07c"* ]]
-}
-
-@test "up: windows by host, then repo; a session sync adds goes right after its repo's last window" {
-  add_row 192.168.122.51 '{"repo": "/workspace/abc", "worktree": "/workspace/abc", "branch": "main", "live": "alive", "state": "running", "kind": "", "entry": "e-abc-1", "continue": "dtach -a /var/tmp/agent-sessions/e-abc-1.sock -r winch"}'
-  "$FLEET" up
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-entry}' -f "$NOT_OV"
-  [ "$output" = $'abc/main|nixos|e-abc-1\nnixed/main|nixos|e-nixed-1\nnixed/x|nixos|e-nixed-stall\nagent-methodology|thinkcentre|e-am-1' ]
-  add_row 192.168.122.51 "$NEW_ROW"
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 added' ]
-  run t list-panes -s -t =fleet -F '#W|#{window_panes}|#{@fleet-entry}' -f "$NOT_OV"
-  [ "$output" = $'abc/main|1|e-abc-1\nnixed/main|1|e-nixed-1\nnixed/x|1|e-nixed-stall\nnixed/y|1|e-nixed-2\nagent-methodology|1|e-am-1' ]
-}
-
-@test "sync: an older fleet's tiled window is broken up, one session per window; a shell opened in it stays" {
-  add_row 192.168.122.51 "$NEW_ROW"
-  "$FLEET" up
-  # What an older fleet made: one window for the repo, untagged and named <host>·<repo>, its sessions tiled in it,
-  # and a shell a person split into it.
-  pane_of() { t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk -v e="$1" '$2 == e { print $1 }'; }
-  first=$(pane_of e-nixed-1)
-  wid=$(t display -p -t "$first" '#{window_id}')
-  shell=$(t split-window -d -t "$first" -P -F '#{pane_id}' 'sleep 600')
-  t join-pane -d -s "$(pane_of e-nixed-stall)" -t "$shell"
-  t join-pane -d -s "$(pane_of e-nixed-2)" -t "$(pane_of e-nixed-stall)"
-  t select-layout -t "$wid" tiled; old_window "$wid"
-  [ "$(t list-panes -t "$wid" -F '#{@fleet-entry}' | tr '\n' ,)" = 'e-nixed-1,,e-nixed-stall,e-nixed-2,' ]
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet: 1 renamed, 2 moved to a window of its own' ]
-  # The same panes, none restarted: the first session and the shell in the old window, each other one after it.
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  [ "$(t list-panes -t "$wid" -F '#{pane_id}' | tr '\n' ,)" = "$first,$shell," ]
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{@fleet-entry}' -f "$NOT_OV"
-  [ "$output" = $'nixed/main|nixos|#8ec07c|e-nixed-1\nnixed/main|nixos|#8ec07c|\nnixed/x|nixos|#8ec07c|e-nixed-stall\nnixed/y|nixos|#8ec07c|e-nixed-2\nagent-methodology|thinkcentre|#fe8019|e-am-1' ]
-  run "$FLEET" sync -t fleet
-  [ "$output" = 'fleet: synced fleet, nothing to change' ]
-}
-
-@test "sync: overview panes carry their guest's host and its colour, also ones made before the tags" {
-  "$FLEET" up
-  t list-panes -t =fleet:overview -F '#{pane_id}' | while read -r p; do t set -pu -t "$p" @fleet-guest-host \; set -pu -t "$p" @fleet-guest-colour; done
-  "$FLEET" sync -t fleet
-  run t list-panes -t =fleet:overview -F '#{@fleet-guest}|#{@fleet-guest-host}|#{@fleet-guest-colour}'
-  [[ "$output" == *"agentvm-repos|nixos|#8ec07c"* ]]
-  [[ "$output" == *"agentvm-thinkrepos|thinkcentre|#fe8019"* ]]
-}
-
-@test "sync: an overview pane an older fleet started is restarted, a current one is left running" {
-  "$FLEET" up
-  old=$(t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-guest}' | awk '$2 != "" { print $1 }' | head -1)
-  cur=$(t list-panes -t =fleet:overview -F '#{pane_id} #{@fleet-guest}' | awk '$2 != "" { print $1 }' | tail -1)
-  t set -pu -t "$old" @fleet-overview
-  pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
-  "$FLEET" sync -t fleet
-  [ "$(t display -p -t "$old" '#{pane_pid}')" != "$pold" ]
-  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 5 ]
-  [ "$(t display -p -t "$cur" '#{pane_pid}')" = "$pcur" ]
-}
-
-@test "sync: a pane's glyph and colour follow its live value, refreshed on every sync" {
-  "$FLEET" up
-  for pair in 'alive:● #b8bb26' 'waiting:○ #fabd2f' 'stalled:◐ #fabd2f' 'blocked #3:◆ #d3869b' 'dead:✗ #fb4934' \
-    'dead?:✗ #fb4934' 'ended:· #928374' 'done:✓ #928374' 'gone:∅ #928374' '-:· #928374' '?:· #928374'; do
-    live=${pair%:*} look=${pair##*:}
-    jq --arg l "$live" 'map(if .entry == "e-nixed-stall" then .live = $l else . end)' \
-      "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-    "$FLEET" sync -t fleet
-    run tags
-    [[ "$output" == *"e-nixed-stall|$look impl/x $live"* ]] || { echo "$live: $output"; false; }
-  done
-}
-
-@test "overview colours: each status.sh row in its glyph's colour, header bold, rule and supervisor line grey" {
-  table=$'  worktree  live\n  ────────  ────\n● nixed     alive\n◆ nixed/x   blocked #3\n✗ ethaae    dead\n· am        -\nsupervisor: last tick 2m ago'
-  run "$FLEET" _colour <<<"$table"
-  [ "$status" -eq 0 ]
-  e=$'\033'
-  [ "${lines[0]}" = "$e[1m  worktree  live$e[0m" ]
-  [ "${lines[1]}" = "$e[38;2;146;131;116m  ────────  ────$e[0m" ]
-  [ "${lines[2]}" = "$e[38;2;184;187;38m● nixed     alive$e[0m" ]
-  [ "${lines[3]}" = "$e[38;2;211;134;155m◆ nixed/x   blocked #3$e[0m" ]
-  [ "${lines[4]}" = "$e[38;2;251;73;52m✗ ethaae    dead$e[0m" ]
-  [ "${lines[5]}" = "$e[38;2;146;131;116m· am        -$e[0m" ]
-  [ "${lines[6]}" = "$e[38;2;146;131;116msupervisor: last tick 2m ago$e[0m" ]
-}
-
-@test "overview colours: a line already coloured (status.sh on a tty) or not a table passes through" {
-  run "$FLEET" _colour <<<$'\033[32m● x\033[0m\nunreachable'
-  [ "${lines[0]}" = $'\033[32m● x\033[0m' ]
-  [ "${lines[1]}" = "unreachable" ]
-}
-
-@test "attach: a detach (socket still there) closes the pane (D11)" {
-  touch "$FLEET_FIXTURES/attach-exits" "$FLEET_FIXTURES/sock-alive"
-  "$FLEET" up
-  for i in $(seq 50); do [ -z "$(entries)" ] && break; sleep 0.1; done
-  [ -z "$(entries)" ]
-}
-
-@test "sync: one unreachable guest never fails it (D9)" {
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  run "$FLEET" up
-  [ "$status" -eq 0 ]
-  run entries
-  [ "$output" = $'e-nixed-1\ne-nixed-stall' ]
-  run "$FLEET" status agentvm-thinkrepos
   [ "$output" = unreachable ]
 }
 
-@test "up: rebuilds a session without the boot marker, keeps one with it (D13)" {
+@test "status: an unknown guest dies with 'no guest'" {
+  run "$FLEET" status nope
+  [ "$status" -eq 1 ]
+  [ "$output" = "fleet: no guest nope" ]
+}
+
+# --- the session (layout C, agent-methodology D20) -------------------------
+
+@test "fleet start makes the deck and overview windows only" {
+  export FLEET_DECK_CMD=agent-deck
+  run "$FLEET" up
+  [ "$status" -eq 0 ]
+  run t list-windows -t =fleet -F '#W|#{window_panes}|#{@fleet-deck}'
+  [ "$output" = $'deck|1|1\noverview|2|' ]
+  [ "$(t show -gv @fleet-booted-fleet)" = c ]
+  [ "$(t show -t =fleet: -v @fleet-mode)" = remote ]
+  # no agent-deck: the overview alone
+  t kill-server
+  FLEET_DECK_CMD=agent-deck-not-in-tests "$FLEET" up
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = overview ]
+}
+
+@test "up: window overview runs its loop, the first guest's btop to its right" {
+  "$FLEET" up
+  run t list-panes -t =fleet:overview -F '#{@fleet-overview}|#{@fleet-res-guest}|#{pane_left}|#{pane_width}'
+  [ "${lines[0]}" = '1||0|127' ]
+  [ "${lines[1]}" = '|agentvm-repos|128|72' ]
+  [[ "$(t list-panes -t =fleet:overview -F '#{pane_start_command}' | head -1)" == *_overview*fleet* ]]
+  wait_log 'agentvm@192.168.122.51 .*btop'
+  grep -q 'ssh -t .*agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
+}
+
+@test "deck: its TUI starts outside fleet's tmux, allowed to run inside one" {
+  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
+  mkdir -p "${FLEET_DECK_CMD%/*}"
+  printf '#!/bin/sh\nenv > "$0.env"; exec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
+  "$FLEET" up
+  # deck refuses to start inside tmux without the allowance, and with TMUX set looks for its sessions on fleet's server
+  for _ in $(seq 25); do [ -s "$FLEET_DECK_CMD.env" ] && break; sleep 0.2; done
+  grep -qx AGENT_DECK_ALLOW_OUTER_TMUX=1 "$FLEET_DECK_CMD.env"
+  ! grep -q '^TMUX=' "$FLEET_DECK_CMD.env"
+  [[ "$(t display -p -t =fleet:deck '#{pane_start_command}')" == *deckbin/agent-deck* ]]
+}
+
+@test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored, and stops an old hint loop (D13)" {
   "$FLEET" up
   t new-window -d -t =fleet: -n mine 'sleep 600'
   "$FLEET" up
   t list-windows -t =fleet -F '#W' | grep -qx mine
-  t set -gu @fleet-booted-fleet
+  # an older fleet's session (marker 1) and its hint loop
+  t set -g @fleet-booted-fleet 1
+  sleep 600 & old=$!
+  echo "$old 5" > "$FLEET_STATE/fleet/hintloop.pid"
   "$FLEET" up
   ! t list-windows -t =fleet -F '#W' | grep -qx mine
-  [ "$(t show -gv @fleet-booted-fleet)" = 1 ]
+  ! kill -0 "$old" 2>/dev/null
+  [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
+  [ "$(t show -gv @fleet-booted-fleet)" = c ]
+  # resurrect's (no marker)
+  t new-window -d -t =fleet: -n mine 'sleep 600'
+  t set -gu @fleet-booted-fleet
+  "$FLEET" up
   run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\noverview2\nnixed/main\nnixed/x\nagent-methodology' ]
+  [ "$output" = overview ]
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -613,137 +183,98 @@ old_window() {
   run "$FLEET" --local up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet-nixos -F '#W'
-  [ "$output" = $'overview\noverview2\nnixed/main\nnixed/x' ]
+  [ "$output" = overview ]
   [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
-  run "$FLEET" sync -t fleet-nixos
-  [ "$status" -eq 0 ]
   ! grep -q 'theo@' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "sync: no fleet session says so, exit 1" {
-  run "$FLEET" sync
-  [ "$status" -eq 1 ]
-  [ "$output" = "fleet: no fleet session; start one with: fleet" ]
-}
-
-@test "sync: a guest unreachable for one sync keeps its live panes" {
-  "$FLEET" up
-  wait_attached e-am-1
+@test "up: one unreachable guest never fails it (D9)" {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  "$FLEET" sync -t fleet
-  [[ "$(entries)" == *e-am-1* ]]
+  run "$FLEET" up
+  [ "$status" -eq 0 ]
+  run "$FLEET" status agentvm-thinkrepos
+  [ "$output" = unreachable ]
 }
 
-# Layout C's overview (agent-methodology #127 D20, step 0)
-OV2_REPOS=$'agentvm-repos · nixos\n  (no open items)\n  status: 4 rows'
-OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      cd /workspace/agent-methodology/.claude/worktrees/impl-x-1 && /home/agentvm/.local/share/agent-methodology/gen/b80f91c6/shared/methodology next --resume /workspace/agent-methodology/.claude/worktrees/impl-x-1 --here\n  status: 1 row'
+@test "fleet sync is unknown" {
+  run "$FLEET" sync
+  [ "$status" -eq 2 ]
+  [[ "$output" == 'usage: fleet'* ]]
+}
 
-@test "overview2 prints each guest's open items with continue" {
-  run "$FLEET" _overview2 --once
+# --- window overview ---------------------------------------------------------
+
+OV_REPOS=$'agentvm-repos · nixos\n  (no open items)\n  status: 4 rows
+    main  attended  working
+    main  unattended  idle
+    nixed  unattended  -  gated #4
+    impl/x  unattended  asking  stall'
+OV_THINK_ITEM=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      cd /workspace/agent-methodology/.claude/worktrees/impl-x-1 && /home/agentvm/.local/share/agent-methodology/gen/b80f91c6/shared/methodology next --resume /workspace/agent-methodology/.claude/worktrees/impl-x-1 --here'
+OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
+
+@test "overview lists both guests' open items and status rows" {
+  run "$FLEET" _overview fleet --once
   [ "$status" -eq 0 ]
-  [ "$output" = "$OV2_REPOS"$'\n\n'"$OV2_THINK" ]
+  [ "$output" = "$OV_REPOS"$'\n\n'"$OV_THINK_ITEM"$'\n'"$OV_THINK_ROWS" ]
   # one ssh per guest, over the shared connection
   [ "$(grep -c 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log")" -eq 1 ]
   grep 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster=auto
+  # the round also writes the hint
+  [ "$(plain < "$FLEET_STATE/fleet/hint")" = "nixos ●3 ◆1  thinkcentre ●1 ✉1" ]
 }
 
-@test "overview2: an item with no continue shows what it needs" {
+@test "overview: a row missing fields shows ? and -" {
+  echo '[{"repo": "/workspace/agent-methodology", "state": "running"}]' > "$FLEET_FIXTURES/guest-192.168.123.51.json"
+  run "$FLEET" _overview fleet --once
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'  status: 1 row\n    ?  ?  -' ]]
+}
+
+@test "overview: an item with no continue shows what it needs" {
   sed -i '/^continue=/d' "$FLEET_FIXTURES/inbox-192.168.123.51/21"
-  run "$FLEET" _overview2 --once
+  run "$FLEET" _overview fleet --once
   [[ "$output" == *$'✉ #21 death impl/x-1\n      needs: The session died (state running, exit none).\n'* ]]
 }
 
-@test "overview2 says no open items" {
+@test "overview says no open items" {
   rm -r "$FLEET_FIXTURES/inbox-192.168.123.51"
-  run "$FLEET" _overview2 --once
+  run "$FLEET" _overview fleet --once
   [ "$status" -eq 0 ]
-  [ "$output" = "$OV2_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  (no open items)\n  status: 1 row' ]
+  [ "$output" = "$OV_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  (no open items)\n'"$OV_THINK_ROWS" ]
 }
 
-@test "overview2 marks an unreachable guest, an unreachable host and a guest with no supervisor" {
+@test "overview marks an unreachable guest, an unreachable host and a guest with no supervisor" {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  run "$FLEET" _overview2 --once
+  run "$FLEET" _overview fleet --once
   [ "$status" -eq 0 ]
-  [ "$output" = "$OV2_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  ✗ unreachable' ]
+  [ "$output" = "$OV_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  ✗ unreachable' ]
   rm "$FLEET_FIXTURES/fail-192.168.123.51"; touch "$FLEET_FIXTURES/fail-thinkcentre" "$FLEET_FIXTURES/nosup-192.168.122.51"
-  run "$FLEET" _overview2 --once
+  run "$FLEET" _overview fleet --once
   [ "$output" = $'agentvm-repos · nixos\n  (no open items)\n  status: no supervisor\n\nthinkcentre\n  ✗ unreachable' ]
 }
 
-@test "hint counts live, asking, open: deck's activity when a row has one, else live and what needs you" {
-  jq '[.[0] + {activity: "working"}, .[0] + {entry: "a2", activity: "asking"}, .[0] + {entry: "a3", activity: "idle"},
-    .[0] + {entry: "a4", activity: "quota"}]' "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x"
+# --- the hint ----------------------------------------------------------------
+
+@test "hint counts live, asking, open from status --json's activity" {
+  jq '[.[0], .[0] + {deck_id: "a2", activity: "asking"}, .[0] + {deck_id: "a3", activity: "idle"},
+    .[0] + {deck_id: "a4", activity: "quota"}, .[0] + {deck_id: "a5", activity: ""}, (.[0] + {deck_id: "a6"} | del(.activity))]' \
+    "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x"
   mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.123.51.json"
   "$FLEET" up
   run "$FLEET" hint -t fleet
-  [ "$(plain <<<"$output")" = "nixos ●2 ◆2  thinkcentre ●3 ◆1 ✉1" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ●3 ◆1 ✉1" ]
   [[ "$output" == *"#[fg=#83a598]✉1#[default]"* ]]
 }
 
-@test "up: window overview2 after overview: its loop, and the first guest's btop to its right" {
+@test "hint: counts per host, --refresh rediscovers (D10)" {
   "$FLEET" up
-  [ "$(t list-windows -t =fleet -F '#W' | head -2 | tr '\n' ,)" = 'overview,overview2,' ]
-  run t list-panes -t =fleet:overview2 -F '#{@fleet-overview2}|#{@fleet-res-guest}|#{pane_left}|#{pane_width}'
-  [ "${lines[0]}" = '1||0|127' ]
-  [ "${lines[1]}" = '|agentvm-repos|128|72' ]
-  [[ "$(t list-panes -t =fleet:overview2 -F '#{pane_start_command}' | head -1)" == *_overview2*fleet* ]]
-}
-
-@test "sync: a fleet from before overview2 gets it once; a loop an older fleet started is restarted" {
-  "$FLEET" up
-  t kill-window -t =fleet:overview2
-  "$FLEET" sync -t fleet
-  "$FLEET" sync -t fleet
-  [ "$(t list-windows -t =fleet -F '#W' | grep -cx overview2)" -eq 1 ]
-  [ "$(t list-windows -t =fleet -F '#W' | head -2 | tr '\n' ,)" = 'overview,overview2,' ]
-  p=$(t list-panes -t =fleet:overview2 -F '#{pane_id} #{@fleet-overview2}' | awk '$2 != "" { print $1 }')
-  t set -pu -t "$p" @fleet-overview2
-  old=$(t display -p -t "$p" '#{pane_pid}')
-  "$FLEET" sync -t fleet
-  [ "$(t display -p -t "$p" '#{pane_pid}')" != "$old" ]
-  [ "$(t display -p -t "$p" '#{@fleet-overview2}')" = 1 ]
-  # its btop, closed, comes back on the next sync, once
-  t kill-pane -t "$(t list-panes -t =fleet:overview2 -F '#{pane_id} #{@fleet-res-guest}' | awk '$2 != "" { print $1 }')"
-  "$FLEET" sync -t fleet
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -t =fleet:overview2 -F '#{@fleet-res-guest}' | grep -cx agentvm-repos)" -eq 1 ]
-}
-
-@test "sync: with window overview closed, overview2 gets no guest panes (an exact name, not a prefix)" {
-  "$FLEET" up
-  t kill-window -t =fleet:overview
-  "$FLEET" sync -t fleet
-  [ "$(t list-panes -t =fleet:=overview2 -F '#{pane_id}' | wc -l)" -eq 2 ]
-}
-
-@test "deck: with agent-deck there, window deck comes first, on up and on a sync of an older fleet; none without it" {
-  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
-  "$FLEET" up
-  ! t list-windows -t =fleet -F '#W' | grep -qx deck
-  mkdir -p "${FLEET_DECK_CMD%/*}"
-  printf '#!/bin/sh\nenv > "$0.env"; exec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
-  "$FLEET" sync -t fleet
-  "$FLEET" sync -t fleet
-  # deck refuses to start inside tmux without the allowance, and with TMUX set looks for its sessions on fleet's server
-  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$FLEET_DECK_CMD.env" ] && break; sleep 0.2; done
-  grep -qx AGENT_DECK_ALLOW_OUTER_TMUX=1 "$FLEET_DECK_CMD.env"
-  ! grep -q '^TMUX=' "$FLEET_DECK_CMD.env"
-  [ "$(t list-windows -t =fleet -F '#W' | head -3 | tr '\n' ,)" = 'deck,overview,overview2,' ]
-  [ "$(t list-windows -t =fleet -F '#W' | grep -cx deck)" -eq 1 ]
-  [[ "$(t display -p -t =fleet:deck '#{pane_start_command}')" == *deckbin/agent-deck* ]]
-  t kill-server
-  "$FLEET" up
-  [ "$(t list-windows -t =fleet -F '#W' | head -3 | tr '\n' ,)" = 'deck,overview,overview2,' ]
-}
-
-@test "hint: counts per host and unpaned entries (D10)" {
-  "$FLEET" up
-  add_row 192.168.122.51 "$NEW_ROW"
+  jq '. + [.[0] + {deck_id: "d-nixed-3", activity: "asking"}]' "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x"
+  mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
   run "$FLEET" hint -t fleet --refresh
   [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1 ✉1  ↻1" ]
+  [ "$(plain <<<"$output")" = "nixos ●4 ◆2  thinkcentre ●1 ✉1" ]
   run "$FLEET" hint -t fleet
-  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●3#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default] #[fg=#83a598]✉1#[default]  #[fg=#928374]↻1#[default]" ]
+  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●4#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default] #[fg=#83a598]✉1#[default]" ]
 }
 
 @test "hint: an unreachable host shows ✗; no cache prints nothing (D10)" {
@@ -753,19 +284,15 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
   "$FLEET" up
   run "$FLEET" hint -t fleet
-  [ "$(plain <<<"$output")" = "nixos ●2 ◆2  thinkcentre ✗" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ✗" ]
 }
 
-@test "sync and hint from a session fleet did not make act on fleet's (prefix F anywhere)" {
+@test "hint from a session fleet did not make shows fleet's" {
   "$FLEET" up
   t new-session -d -s mine 'sleep 600'
-  add_row 192.168.122.51 "$NEW_ROW"
-  run "$FLEET" sync -t mine
+  run "$FLEET" hint -t mine --refresh
   [ "$status" -eq 0 ]
-  [[ "$(entries)" == *e-nixed-2* ]]
-  [ "$(t list-panes -t =mine -F x | wc -l)" -eq 1 ]
-  run "$FLEET" hint -t mine
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1 ✉1" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ●1 ✉1" ]
 }
 
 @test "hint: a foreign session under --local falls back to fleet-<host>, not fleet (D6, D10)" {
@@ -774,15 +301,28 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   t new-session -d -s mine 'sleep 600'
   run "$FLEET" hint -t mine
   [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●2 ◆2" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆1" ]
 }
+
+@test "hint: nothing once the session is gone, though its cache remains (D10)" {
+  "$FLEET" up
+  t new-session -d -s mine 'sleep 600'
+  [ -n "$("$FLEET" hint -t mine)" ]
+  t kill-session -t =fleet
+  [ -r "$FLEET_STATE/fleet/hint" ]
+  run "$FLEET" hint -t mine
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- doctor and ssh ----------------------------------------------------------
 
 @test "doctor: names the guest whose ssh fails, exits 1 (D14)" {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
   run "$FLEET" doctor
   [ "$status" -eq 1 ]
   [[ "$output" == *'FAIL  ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
-  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos)'* ]]
+  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck'* ]]
 }
 
 @test "doctor: all good exits 0 (D14)" {
@@ -794,7 +334,7 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
 @test "doctor: a failed guest ssh shows ssh's own reason (D14)" {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
   run "$FLEET" doctor
-  [[ "$output" == *$'(agentvm-thinkrepos): no ssh, or no dtach there\n      ssh: connect to host 192.168.123.51 port 22: Connection timed out'* ]]
+  [[ "$output" == *$'(agentvm-thinkrepos): no ssh, or no agent-deck there\n      ssh: connect to host 192.168.123.51 port 22: Connection timed out'* ]]
 }
 
 @test "ssh: guests get accept-new, hosts don't; no -i by default" {
@@ -804,12 +344,12 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "ssh: probes and discovery share a connection; attach panes don't" {
+@test "ssh: probes and discovery share a connection; the btop pane doesn't" {
   "$FLEET" up
-  wait_attached e-nixed-1
+  wait_log 'agentvm@192.168.122.51 .*btop'
   grep -q "ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m -o BatchMode=yes .* agentvm@192.168.122.51 bash -s -- inbox-json" "$FLEET_FIXTURES/ssh.log"
   grep -q "ControlMaster=auto .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
-  ! grep 'dtach -a' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
+  ! grep 'btop' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
   [ "$(stat -c %a "$FLEET_STATE/ssh")" = 700 ]
 }
 
@@ -829,112 +369,23 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   [ "$(jq -r '(map(.host) | unique == ["nixos", "thinkcentre"]) and .[0].host == "nixos"' "$FLEET_STATE/fleet/fleet.json")" = true ]
 }
 
-@test "ssh: AGENTVM_KEY is the guests' identity, in panes too" {
+@test "ssh: AGENTVM_KEY is the guests' identity, in the btop pane too" {
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up
-  wait_attached e-nixed-1
+  wait_log 'agentvm@192.168.122.51 .*btop'
   grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log"
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 dtach -a' "$FLEET_FIXTURES/ssh.log"
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
   ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "ssh --local: the host's agentvm key when it exists, in panes too" {
+@test "ssh --local: the host's agentvm key when it exists, in the btop pane too" {
   export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
   "$FLEET" --local status agentvm-repos
   ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
   mkdir -p "$HOME/.agentvm/keys" && touch "$HOME/.agentvm/keys/id_ed25519"
   "$FLEET" --local up
-  wait_attached e-nixed-1
-  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 dtach -a" "$FLEET_FIXTURES/ssh.log"
-}
-
-@test "attach: a lost link (ssh 255) says so and marks the pane ended" {
-  touch "$FLEET_FIXTURES/attach-lost"
-  "$FLEET" up
-  wait_ended
-  pid=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  for i in $(seq 50); do t capture-pane -p -t "$pid" | grep -q 'link lost' && break; sleep 0.1; done
-  t capture-pane -p -t "$pid" | grep -qx '\[fleet\] link lost; prefix F syncs'
-  ! grep -q 'test -S' "$FLEET_FIXTURES/ssh.log"
-}
-
-@test "sync: an ended pane whose guest is unreachable is closed" {
-  touch "$FLEET_FIXTURES/attach-exits"
-  "$FLEET" up
-  wait_ended
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  "$FLEET" sync -t fleet
-  run entries
-  [ "$output" = $'e-nixed-1\ne-nixed-stall' ]
-}
-
-@test "sync: two at once add each pane once; a held lock exits 0 and says so" {
-  "$FLEET" up
-  add_row 192.168.122.51 "$NEW_ROW"
-  "$FLEET" sync -t fleet & "$FLEET" sync -t fleet; wait
-  run entries
-  [ "$output" = $'e-am-1\ne-nixed-1\ne-nixed-2\ne-nixed-stall' ]
-  flock "$FLEET_STATE/fleet/sync.lock" sleep 3 >/dev/null 3>&- &
-  holder=$!
-  for i in $(seq 50); do ! flock -n "$FLEET_STATE/fleet/sync.lock" true && break; sleep 0.1; done
-  add_row 192.168.122.51 "${NEW_ROW//nixed-2/nixed-3}"
-  run "$FLEET" sync -t fleet
-  [ "$status" -eq 0 ]
-  [ "$output" = "fleet: a sync of fleet is already running" ]
-  [[ "$(entries)" != *e-nixed-3* ]]
-  kill "$holder" 2>/dev/null || true
-}
-
-@test "status: a hung status.sh times out as unreachable" {
-  touch "$FLEET_FIXTURES/hang-192.168.122.51"
-  FLEET_PROBE_TIMEOUT=1 run "$FLEET" status agentvm-repos
-  [ "$status" -eq 0 ]
-  [ "$output" = unreachable ]
-}
-
-@test "status: an unknown guest dies with 'no guest'" {
-  run "$FLEET" status nope
-  [ "$status" -eq 1 ]
-  [ "$output" = "fleet: no guest nope" ]
-}
-
-@test "hint: nothing once the session is gone, though its cache remains (D10)" {
-  "$FLEET" up
-  t new-session -d -s mine 'sleep 600'
-  [ -n "$("$FLEET" hint -t mine)" ]
-  t kill-session -t =fleet
-  [ -r "$FLEET_STATE/fleet/hint" ]
-  run "$FLEET" hint -t mine
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
-@test "hint loop: removes the hint when its session ends (D10)" {
-  "$FLEET" up
-  FLEET_HINT_INTERVAL=0.2 "$FLEET" _hintloop fleet &
-  for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
-  t kill-session -t =fleet
-  wait
-  [ ! -e "$FLEET_STATE/fleet/hint" ]
-  [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
-}
-
-@test "hint loop: a HUP or TERM ends it with status 0, so run-shell -b prints no 'terminated by signal' in a pane" {
-  "$FLEET" up
-  for sig in HUP TERM; do
-    FLEET_HINT_INTERVAL=600 "$FLEET" _hintloop fleet & p=$!
-    for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
-    kill -s "$sig" "$p"
-    st=0; wait "$p" || st=$?
-    [ "$st" -eq 0 ]
-    [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
-  done
-  # A loop replaced by sync leaves its successor's pid file alone.
-  FLEET_HINT_INTERVAL=600 "$FLEET" _hintloop fleet & p=$!
-  for i in $(seq 50); do [ -r "$FLEET_STATE/fleet/hintloop.pid" ] && break; sleep 0.1; done
-  echo "999999 5" > "$FLEET_STATE/fleet/hintloop.pid"
-  kill "$p"; wait "$p" || true
-  [ "$(cat "$FLEET_STATE/fleet/hintloop.pid")" = "999999 5" ]
+  wait_log 'agentvm@192.168.122.51 .*btop'
+  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 .*btop" "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "tmux.conf: resurrect's post-save hook drops fleet's sessions from a save" {
@@ -949,76 +400,107 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
 }
 
-@test "sync: replaces a hint loop an older fleet started (its pid file has no version)" {
+# --- hops: the deck TUI follows a viewed hop (D20, Clarification 5) -----------
+
+# fleet with the stub deck, its TUI attached to thinkrepos' d-am-1; one round records the attach.
+deck_up() {
+  export FLEET_DECK_CMD=agent-deck
+  echo "192.168.123.51 d-am-1" > "$FLEET_FIXTURES/deck-attach"
   "$FLEET" up
-  sleep 600 & old=$!
-  echo "$old" > "$FLEET_STATE/fleet/hintloop.pid"
-  FLEET_NO_HINTLOOP= "$FLEET" sync -t fleet
-  ! kill -0 "$old" 2>/dev/null
-  for i in $(seq 50); do grep -q ' 5$' "$FLEET_STATE/fleet/hintloop.pid" 2>/dev/null && break; sleep 0.1; done
-  grep -q ' 5$' "$FLEET_STATE/fleet/hintloop.pid"
+  wait_log 'agentvm@192.168.123.51 agent-deck session attach d-am-1'
+  "$FLEET" _round fleet >/dev/null
 }
 
-@test "tick: a hop on the same socket is retagged in place, no prefix F; nothing added or closed" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  # chain.sh's next run in the same dtach; besides it, an unrelated new session and a gone one.
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" | .branch = "impl/z" | .prev = "e-nixed-1" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  add_row 192.168.122.51 "$NEW_ROW"
-  drop_row 192.168.122.51 e-nixed-stall
-  run "$FLEET" _tick fleet
-  [ "$status" -eq 0 ]
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t list-panes -s -t =fleet -F '#{pane_id}|#{@fleet-entry}|#{@fleet-glyph} #{@fleet-branch} #{@fleet-live}'
-  [[ "$output" == *"$old|e-nixed-1b|● impl/z alive"* ]]
-  [[ "$output" == *'|e-nixed-stall|'* ]]
-  [[ "$output" != *'|e-nixed-2|'* ]]
-  # The hint still offers the unrelated one to prefix F.
-  [[ "$(plain < "$FLEET_STATE/fleet/hint")" == *'↻1'* ]]
+# The attached session stops (its hand-off): deck's attach ends, the TUI is back on its list.
+detach() {
+  local i
+  rm -f "$FLEET_FIXTURES/deck-attach"
+  for i in $(seq 50); do pgrep -f 'agent-deck session attach d-am-1' >/dev/null || return 0; sleep 0.1; done
+  return 1
 }
 
-@test "tick: an ended pane whose session handed over to a new socket is respawned in place on its successor" {
-  touch "$FLEET_FIXTURES/attach-exits"
-  "$FLEET" up
-  wait_ended
-  rm "$FLEET_FIXTURES/attach-exits"
-  old=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-nixed-1" { print $1 }')
-  before=$(t list-panes -a -F '#{pane_id}' | sort)
-  # next-session.sh's hop outside chain.sh: a new entry, prev the old one, in a dtach of its own.
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1c" | .prev = "e-nixed-1" | .branch = "impl/w"
-    | .continue = "dtach -a /var/tmp/agent-sessions/e-nixed-1c.sock -r winch" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  run "$FLEET" _tick fleet
-  [ "$status" -eq 0 ]
-  [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
-  run t display -p -t "$old" '#{@fleet-entry}|#{@fleet-sock}|#{@fleet-ended}|#{@fleet-branch} #{@fleet-live}'
-  [ "$output" = 'e-nixed-1c|192.168.122.51 /var/tmp/agent-sessions/e-nixed-1c.sock||impl/w alive' ]
-  wait_attached e-nixed-1c
-  # The other ended panes have no successor: left, still ended, for prefix F.
-  run t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-ended}'
-  [[ "$output" == *'e-am-1|1'* ]]
-  [[ "$output" == *'e-nixed-stall|1'* ]]
-  # A row without prev (an older status.sh) is no one's successor.
-  am=$(t list-panes -s -t =fleet -F '#{pane_id} #{@fleet-entry}' | awk '$2 == "e-am-1" { print $1 }')
-  jq 'map(if .entry == "e-am-1" then .entry = "e-am-2" | .continue = "dtach -a /var/tmp/agent-sessions/e-am-2.sock -r winch" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.123.51.json"
-  "$FLEET" _tick fleet
-  [ "$(t display -p -t "$am" '#{@fleet-entry}|#{@fleet-ended}')" = 'e-am-1|1' ]
+# The hops thinkrepos' probe reports, "<old> <successor> <old's tmux session>" each.
+hops() { printf '%s\t%s\t%s\n' "$@" > "$FLEET_FIXTURES/hops-192.168.123.51"; }
+
+rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null; }
+
+@test "a viewed hop opens its successor in the TUI once" {
+  deck_up
+  [[ "$(cat "$FLEET_STATE/fleet/deck-attached")" == $'192.168.123.51\t'*'session attach d-am-1' ]]
+  detach
+  hops d-am-1 d-am-2 agentdeck_am_1
+  rounds
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2 --attach" ]
 }
 
-@test "tick: follows nothing while a sync holds the lock" {
-  "$FLEET" up
-  wait_attached e-nixed-1
-  jq 'map(if .entry == "e-nixed-1" then .entry = "e-nixed-1b" else . end)' \
-    "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x" && mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  flock "$FLEET_STATE/fleet/sync.lock" sleep 3 >/dev/null 3>&- &
-  holder=$!
-  for i in $(seq 50); do ! flock -n "$FLEET_STATE/fleet/sync.lock" true && break; sleep 0.1; done
-  run "$FLEET" _tick fleet
+@test "an unviewed hop moves nothing" {
+  # the probe lists only a hop from an archived session marked am.viewed=1
+  echo '[{"deck_id": "d-2", "prev": "d-1"}, {"deck_id": "d-4", "prev": "d-3"}, {"deck_id": "d-6", "prev": "d-5"},
+    {"deck_id": "d-7", "prev": ""}]' > "$FLEET_FIXTURES/status-json"
+  echo '[{"id": "d-1", "archived": true, "tmux_session": "agentdeck_a"}, {"id": "d-3", "archived": true, "tmux_session": "agentdeck_b"},
+    {"id": "d-5", "archived": false, "tmux_session": "agentdeck_c"}]' > "$FLEET_FIXTURES/deck-list.json"
+  printf '%s\n' d-1 d-5 > "$FLEET_FIXTURES/deck-viewed"
+  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
   [ "$status" -eq 0 ]
-  [[ "$(entries)" == *e-nixed-1* ]] && [[ "$(entries)" != *e-nixed-1b* ]]
-  kill "$holder" 2>/dev/null || true
+  [ "${output#*fleet:hops$'\n'}" = $'d-1\td-2\tagentdeck_a' ]
+  # so with no hop reported, the TUI stays
+  deck_up
+  detach
+  rounds
+  [ ! -e "$FLEET_FIXTURES/deck.log" ]
+}
+
+@test "a hop this TUI wasn't attached to moves nothing" {
+  deck_up
+  # attached to another session when its old one's hop arrives
+  echo "192.168.123.51 d-am-5" > "$FLEET_FIXTURES/deck-attach"
+  wait_log 'agentvm@192.168.123.51 agent-deck session attach d-am-5'
+  hops d-am-1 d-am-2 agentdeck_am_1
+  rounds
+  # a hop of another session on its guest, and of the same id on another guest
+  rm -f "$FLEET_FIXTURES/deck-attach"
+  for i in $(seq 50); do pgrep -f 'agent-deck session attach d-am-5' >/dev/null || break; sleep 0.1; done
+  hops d-other d-other-2 agentdeck_other
+  printf 'd-am-5\td-am-6\tagentdeck_am_5\n' > "$FLEET_FIXTURES/hops-192.168.122.51"
+  rounds
+  [ ! -e "$FLEET_FIXTURES/deck.log" ]
+}
+
+@test "a hop reported while its attach is still open is followed once it ends" {
+  deck_up
+  hops d-am-1 d-am-2 agentdeck_am_1
+  "$FLEET" _round fleet >/dev/null
+  [ ! -e "$FLEET_FIXTURES/deck.log" ]
+  detach
+  rounds
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2 --attach" ]
+}
+
+@test "a TUI that left its session live is not moved by its later hop" {
+  deck_up
+  # Ctrl+Q back to the list, d-am-1 still working: the record goes
+  detach
+  "$FLEET" _round fleet >/dev/null
+  hops d-am-1 d-am-2 agentdeck_am_1
+  rounds
+  [ ! -e "$FLEET_FIXTURES/deck.log" ]
+  grep -q 'd-am-1' "$FLEET_STATE/fleet/hops-followed"
+}
+
+@test "a focus --attach that fails selects the successor instead" {
+  deck_up
+  detach
+  touch "$FLEET_FIXTURES/deck-fail-attach"
+  hops d-am-1 d-am-2 agentdeck_am_1
+  rounds
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2 --attach\nagent-deck session focus --remote thinkrepos d-am-2' ]
+  grep -q 'd-am-1: focus --remote thinkrepos d-am-2 --attach failed; selected it' "$FLEET_STATE/fleet/follow.log"
+}
+
+@test "two hops in a row are followed in order" {
+  deck_up
+  detach
+  printf 'd-am-1\td-am-2\tagentdeck_am_1\nd-am-2\td-am-3\tagentdeck_am_2\n' > "$FLEET_FIXTURES/hops-192.168.123.51"
+  rounds
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2 --attach\nagent-deck session focus --remote thinkrepos d-am-3 --attach' ]
 }
