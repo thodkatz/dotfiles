@@ -268,7 +268,7 @@ deck_attached() {
     # Its arguments after the word that ran it: `ssh ...`, or `bash /path/ssh ...` for a script named ssh
     read -ra words <<<"$(ps -o args= -p "$p")"
     for ((i = 0; i < ${#words[@]}; i++)); do [ "${words[i]##*/}" != ssh ] || break; done
-    [ "$i" -lt "${#words[@]}" ] && [[ " ${words[*]:i+1} " == *attach* ]] || continue
+    [ "$i" -lt "${#words[@]}" ] && [[ " ${words[*]:i+1} " == *" attach "* ]] || continue
     host=$(ssh -G "${words[@]:i+1}" </dev/null 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')
     [ -n "$host" ] || continue
     ip=$(jq -er --arg h "$host" 'first(.[] | select(.guest != "-" and (.ip == $h or .guest == $h)) | .ip)' "$2") || continue
@@ -276,6 +276,12 @@ deck_attached() {
     return 0
   done
   return 1
+}
+
+# Whether $1 (an attach: "<ip><tab><its ssh's words>") is to the session $3 or tmux session $4 on guest $2.
+names() {
+  [ -n "$1" ] && [ "${1%%$'\t'*}" = "$2" ] || return 1
+  [[ -n "$3" && "$3" != - && " ${1#*$'\t'} " == *" $3 "* ]] || [[ -n "$4" && "$4" != - && " ${1#*$'\t'} " == *" $4 "* ]]
 }
 
 # The name deck's config gives the remote at guest IP $1 ([remotes.<name>], its host <user>@<ip>).
@@ -290,10 +296,13 @@ deck_remote() {
 # not followed yet, when this fleet's deck TUI was attached to the old session (the last attach the loop saw, kept in
 # <state>/<s>/deck-attached: the old one is stopped by now, so its attach has ended) and is attached to no other
 # session now, `agent-deck session focus --remote <guest> <successor> --attach` opens the successor. A TUI on its list
-# since keeps the record: a hop is seen up to a round after it. Each hop once (<state>/<s>/hops-followed, "<ip>
-# <old id>"), whether followed or not; a chain's hops in order, the record moving to each successor.
+# since keeps the record (a hop is seen up to a round after it) until the recorded session shows live on its guest
+# with nothing attached: the user left it, and its later hop isn't this TUI's. A hop whose old session the TUI is
+# still attached to waits a round (its attach ending). Each hop once (<state>/<s>/hops-followed, "<ip> <old id>"),
+# whether followed or not; a chain's hops in order, the record moving to each successor. Each decision is a line in
+# <state>/<s>/follow.log; a focus that fails is tried once more without FOLLOW_ARGS (the cursor on the successor).
 follow_hops() {
-  local s=$1 f=$2 d pid cur rec deck ip old new tm name more
+  local s=$1 f=$2 d pid cur rec deck ip old new tm name more waiting='' id
   deck=$(deck_cmd)
   [ -n "$deck" ] || return 0
   d=$(sdir "$s")
@@ -307,12 +316,26 @@ follow_hops() {
     more=0
     while IFS=$'\t' read -r ip old new tm; do
       ! grep -qxF "$ip $old" "$d/hops-followed" || continue
+      [[ " $waiting " != *" $ip/$old "* ]] || continue
       # the TUI's record names the old session, on its guest: deck's id, or its tmux session, in the attach's words
-      if [ -n "$rec" ] && [ "${rec%%$'\t'*}" = "$ip" ] && [[ " ${rec#*$'\t'} " == *" $old "* || " ${rec#*$'\t'} " == *" $tm "* ]]; then
-        [ -z "$cur" ] || { echo "$ip $old" >> "$d/hops-followed"; continue; }   # attached to another: it stays
+      if names "$rec" "$ip" "$old" "$tm" || names "$cur" "$ip" "$old" "$tm"; then
+        if names "$cur" "$ip" "$old" "$tm"; then   # still attached to it: next round
+          waiting+=" $ip/$old"; echo "$(date +%T) $ip $old: still attached, next round" >> "$d/follow.log"; continue
+        fi
+        if [ -n "$cur" ]; then   # attached to another: it stays
+          echo "$ip $old" >> "$d/hops-followed"; echo "$(date +%T) $ip $old: attached to another, not followed" >> "$d/follow.log"; continue
+        fi
         name=$(deck_remote "$ip")
-        [ -n "$name" ] || { echo "$ip $old" >> "$d/hops-followed"; continue; }
-        env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" "${FOLLOW_ARGS[@]}" </dev/null >/dev/null 2>&1
+        if [ -z "$name" ]; then
+          echo "$ip $old" >> "$d/hops-followed"; echo "$(date +%T) $ip $old: no [remotes] entry for $ip, not followed" >> "$d/follow.log"; continue
+        fi
+        if env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" "${FOLLOW_ARGS[@]}" </dev/null >/dev/null 2>&1; then
+          echo "$(date +%T) $ip $old: focus --remote $name $new ${FOLLOW_ARGS[*]}" >> "$d/follow.log"
+        elif [ ${#FOLLOW_ARGS[@]} -gt 0 ] && env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" </dev/null >/dev/null 2>&1; then
+          echo "$(date +%T) $ip $old: focus --remote $name $new ${FOLLOW_ARGS[*]} failed; selected it" >> "$d/follow.log"
+        else
+          echo "$(date +%T) $ip $old: focus --remote $name $new failed" >> "$d/follow.log"
+        fi
         echo "$ip $old" >> "$d/hops-followed"
         rec="$ip"$'\t'"$new" more=1
       fi
@@ -320,9 +343,16 @@ follow_hops() {
   done
   # hops this TUI wasn't attached to: never followed later, by a record that names them by chance
   jq -r '.[] | . as $g | .hops[]? | "\($g.ip) \(.prev)"' "$f" 2>/dev/null | while read -r ip old; do
-    grep -qxF "$ip $old" "$d/hops-followed" || echo "$ip $old" >> "$d/hops-followed"
+    [[ " $waiting " == *" $ip/$old "* ]] || grep -qxF "$ip $old" "$d/hops-followed" || echo "$ip $old" >> "$d/hops-followed"
   done
-  [ -z "$cur" ] || rec=$cur
+  if [ -n "$cur" ]; then rec=$cur
+  elif [ -n "$rec" ]; then
+    # the recorded session live on its guest, the TUI on its list: the user detached
+    while read -r id; do
+      if names "$rec" "${rec%%$'\t'*}" "$id" ''; then rec=''; break; fi
+    done < <(jq -r --arg ip "${rec%%$'\t'*}" '.[] | select(.ip == $ip) | .rows[]?
+      | select(.activity == "working" or .activity == "idle" or .activity == "asking") | .deck_id // empty' "$f" 2>/dev/null)
+  fi
   printf '%s\n' "$rec" > "$d/deck-attached"
   # bounded: the newest 200 hops
   tail -n 200 "$d/hops-followed" > "$d/.hops" && mv -f "$d/.hops" "$d/hops-followed"
@@ -373,7 +403,10 @@ cmd_up() {
     tmx kill-session -t "=$s"
   fi
   pidf=$(sdir "$s")/hintloop.pid
-  if [ -r "$pidf" ] && read -r p _ <"$pidf"; then kill "$p" 2>/dev/null; rm -f "$pidf"; fi
+  if [ -r "$pidf" ] && read -r p _ <"$pidf"; then
+    [[ "$(ps -o args= -p "$p" 2>/dev/null)" != *_hintloop* ]] || kill "$p" 2>/dev/null
+    rm -f "$pidf"
+  fi
   echo "fleet: discovering guests..." >&2
   discover "$(sdir "$s")/fleet.json"
   deck=$(deck_cmd)

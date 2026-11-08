@@ -35,7 +35,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 5 | Each guest's sessions come from the `status.sh` and `AGENT_SUPERVISE_REPOS` its `agent-supervise` user unit names (`systemctl --user show -p ExecStart -p Environment`); a guest without the unit is shown as `no supervisor` | *Discovery* | bats: the stub returns a unit with `ExecStart=/workspace/agent-methodology/shared/claude/supervise.sh`; `fleet` runs `…/status.sh --json --no-forge` with that `AGENT_SUPERVISE_REPOS`; a stub with no unit gives the `no supervisor` line and exit 0 |
 | 6 | Session `fleet` (`fleet-<host>` under `--local`): window `deck` first when `agent-deck` is installed, running its TUI, then window `overview`, its loop and the first guest's btop beside; no other windows (Clarification 20) | *Layout* | bats: `"fleet start makes the deck and overview windows only"`: `list-windows -F '#W\|#{window_panes}'` prints `deck\|1`, `overview\|2`; without agent-deck, `overview` alone |
 | 7 | A session is attached in deck's TUI (Enter on its row, over deck's own ssh to the guest), not in a fleet pane; window `overview` lists each guest's open inbox items and its status rows, `<branch> <mode> <activity> [kind] [gated #n]` (Clarification 20) | *Layout* | bats: `"overview lists both guests' open items and status rows"` prints both guests' blocks from the fixtures |
-| 8 | No sync: `fleet sync` is an unknown command and `prefix F` is unbound. What moves on its own is one thing: when the TUI was attached to a session that handed off (a viewed hop) and is back on its list, the overview's loop opens the successor in it, once (*Hops*, Clarification 20) | *Hops* | bats: `"fleet sync is unknown"` (exit 2, usage); `"a viewed hop opens its successor in the TUI once"`, `"an unviewed hop moves nothing"`, `"a hop this TUI wasn't attached to moves nothing"`, `"two hops in a row are followed in order"` |
+| 8 | No sync: `fleet sync` is an unknown command and `prefix F` is unbound. What moves on its own is one thing: when the TUI was attached to a session that handed off (a viewed hop) and is back on its list, the overview's loop opens the successor in it, once (*Hops*, Clarification 20) | *Hops* | bats: `"fleet sync is unknown"` (exit 2, usage); `"a viewed hop opens its successor in the TUI once"`, `"an unviewed hop moves nothing"`, `"a hop this TUI wasn't attached to moves nothing"`, `"two hops in a row are followed in order"`, `"a hop reported while its attach is still open is followed once it ends"`, `"a TUI that left its session live is not moved by its later hop"`, `"a focus --attach that fails selects the successor instead"` |
 | 9 | One unreachable host or guest never fails `fleet up` or a round: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet up` exits 0, and `fleet status <failed>` prints `unreachable` |
 | 10 | The status bar shows `fleet hint` from a cache file the overview's loop rewrites every 30 s, so the bar never runs ssh: `<host> ●N ◆M ✉I` per host in tmux styles (● a row whose `activity` is working, idle or asking; ◆ asking, hidden at 0; ✉ the guests' open inbox items, hidden at 0; the host in its colour; `✗` unreachable) | *Hint* | bats: `"hint counts live, asking, open from status --json's activity"`; from the fixtures `nixos ●3 ◆1  thinkcentre ●1 ✉1` with the styles |
 | 11 | Keys (prefix `C-b`, nothing existing rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (deck's own keys attach and detach) | *Plugins, keys, theme* | `tmux list-keys -T prefix` shows `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
@@ -130,11 +130,15 @@ is killed and rebuilt, and an older fleet's hint loop (`hintloop.pid`) stopped.
 The TUI follows a hop it watched (agent-methodology D20, Clarification 5 there). The probe adds, after status.sh's
 JSON, a `fleet:hops` line and one `<old id> <successor id> <old's tmux session>` line per row whose `prev` names an
 archived deck session marked `am.viewed=1`. Each round, fleet reads what the deck pane is attached to: the first ssh
-under its process whose words contain `attach`, its destination resolved by `ssh -G` to a guest; it keeps the last
-one seen in `deck-attached` (kept while the TUI is on its list). A hop whose old id or tmux session is in that
-record, on that guest, while the TUI is attached to nothing, runs `agent-deck session focus --remote <name>
-<successor> --attach` (`<name>` the remote deck's config gives that guest), and the record moves to the successor,
-so a chain is followed in order. Each hop is acted on once (`hops-followed`, the newest 200), followed or not.
+under its process whose words include the word `attach`, its destination resolved by `ssh -G` to a guest; it keeps
+the last one seen in `deck-attached`, kept while the TUI is on its list, until that session shows live (`activity`
+working, idle or asking) on its guest with nothing attached: the user left it, so its later hop isn't this TUI's. A
+hop whose old id or tmux session is in that record, on that guest, while the TUI is attached to nothing, runs
+`agent-deck session focus --remote <name> <successor> --attach` (`<name>` the remote deck's config gives that guest;
+when that fails, once more without `--attach`, the cursor on the successor), and the record moves to the
+successor, so a chain is followed in order. A hop whose old session the TUI is still attached to waits a round.
+Each hop is acted on once (`hops-followed`, the newest 200), followed or not, and each decision is a line in
+`follow.log`.
 
 ## Hint
 
