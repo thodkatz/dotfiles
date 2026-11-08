@@ -167,15 +167,15 @@ Each unit's PR updates its track's line; the last slice removes it.
 
 The user's dotfiles for an Arch laptop (i3, polybar, alacritty, zsh, nvim, doom, …) and, for tmux, the NixOS
 hosts too, managed with GNU Stow (*Working Conventions*). The one piece of code is `fleet`
-(`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with every agent session on every host's microVM
-guests, reading each host's `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
+(`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with Agent Deck's TUI (every host's microVM guests its
+remotes) and an overview of every guest's open inbox items and status rows, reading each host's
+`/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
-  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; a running `fleet` restarts its overview and hint
-  loops on `prefix F` only when their version stamp in `fleet` changed, so a change to what a loop does bumps
-  its stamp (`README.md`, *Update and run*).
+  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; the overview's loop runs the `fleet` on disk each
+  round, so a pull reaches a running session with no restart (`README.md`, *Update and run*).
 - **A session in a guest can't reach the laptop or the hosts' tmux**: test `fleet` with the bats suite, which
-  stubs ssh, systemctl and ip (`tests/stub`) and answers from `tests/fixtures`, never a real host.
+  stubs ssh, systemctl, ip and agent-deck (`tests/stub`) and answers from `tests/fixtures`, never a real host.
 
 ## Development workflow
 
