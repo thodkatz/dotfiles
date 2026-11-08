@@ -123,7 +123,7 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
 | `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; between syncs, every 20 s, a pane follows its session's hops (hand-off, usage-limit move, resume) in place, nothing else changes on its own |
-| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes |
+| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
 | overview2 window | after overview, refreshed every 30 s: each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs) and its status row count; the first guest's btop to its right |
 | overview window | one row per guest: its `status.sh` table, and to its right its resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
 | `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |

@@ -564,7 +564,10 @@ layout_c_windows() {
   if [ -n "$deck" ] && command -v "$deck" >/dev/null &&
     ! tmx list-windows -t "=$s" -F '#{@fleet-deck}' | grep -qx 1; then
     w=$(tmx list-windows -t "=$s" -F '#{window_id}' | head -n 1)
-    pid=$(tmx new-window -d -b -t "$w" -n deck -P -F '#{pane_id}' "$(printf %q "$deck")") &&
+    # deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it looks for its sessions
+    # on fleet's server, where they aren't, and fails to attach
+    pid=$(tmx new-window -d -b -t "$w" -n deck -P -F '#{pane_id}' \
+      "env -u TMUX -u TMUX_PANE AGENT_DECK_ALLOW_OUTER_TMUX=1 $(printf %q "$deck")") &&
       tmx set -w -t "$pid" @fleet-deck 1
   fi
   # its pane: tagged, or (a tag lost) running _overview2

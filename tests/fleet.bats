@@ -709,9 +709,13 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   "$FLEET" up
   ! t list-windows -t =fleet -F '#W' | grep -qx deck
   mkdir -p "${FLEET_DECK_CMD%/*}"
-  printf '#!/bin/sh\nexec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
+  printf '#!/bin/sh\nenv > "$0.env"; exec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
   "$FLEET" sync -t fleet
   "$FLEET" sync -t fleet
+  # deck refuses to start inside tmux without the allowance, and with TMUX set looks for its sessions on fleet's server
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$FLEET_DECK_CMD.env" ] && break; sleep 0.2; done
+  grep -qx AGENT_DECK_ALLOW_OUTER_TMUX=1 "$FLEET_DECK_CMD.env"
+  ! grep -q '^TMUX=' "$FLEET_DECK_CMD.env"
   [ "$(t list-windows -t =fleet -F '#W' | head -3 | tr '\n' ,)" = 'deck,overview,overview2,' ]
   [ "$(t list-windows -t =fleet -F '#W' | grep -cx deck)" -eq 1 ]
   [[ "$(t display -p -t =fleet:deck '#{pane_start_command}')" == *deckbin/agent-deck* ]]
