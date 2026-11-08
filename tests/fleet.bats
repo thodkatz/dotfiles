@@ -13,6 +13,7 @@ setup() {
   export FLEET_TMUX_SOCKET=fleet-test-$$-$BATS_TEST_NUMBER
   export FLEET_TMUX_CONF=/dev/null
   export FLEET_DECK_CMD=agent-deck-not-in-tests FLEET_DECK_CONFIG=$FLEET_FIXTURES/deck-config.toml
+  export FLEET_DECK_INSTALL=$FLEET_FIXTURES/agent-deck-install
   export FLEET_NO_LOOP=1 FLEET_OVERVIEW_INTERVAL=3600
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.agentvm key leaks in
   mkdir -p "$HOME"
@@ -127,11 +128,25 @@ wait_log() {
   [ "$output" = $'deck|1|1\noverview|2|' ]
   [ "$(t show -gv @fleet-booted-fleet)" = c ]
   [ "$(t show -t =fleet: -v @fleet-mode)" = remote ]
-  # no agent-deck: the overview alone
+  # no agent-deck: the overview alone, and fleet says why
   t kill-server
-  FLEET_DECK_CMD=agent-deck-not-in-tests "$FLEET" up
+  FLEET_DECK_CMD=agent-deck-not-in-tests run "$FLEET" up
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"fleet: agent-deck-not-in-tests is not on PATH, so no deck window: install it with $FLEET_DECK_INSTALL, then run fleet again"* ]]
   run t list-windows -t =fleet -F '#W'
   [ "$output" = overview ]
+}
+
+@test "up: a session built without deck gets the deck window once deck is installed, and keeps it after" {
+  "$FLEET" up
+  export FLEET_DECK_CMD=agent-deck
+  t new-window -d -t =fleet: -n mine 'sleep 600'
+  "$FLEET" up
+  run t list-windows -t =fleet -F '#W|#{@fleet-deck}'
+  [ "$output" = $'deck|1\noverview|' ]
+  t new-window -d -t =fleet: -n mine 'sleep 600'
+  "$FLEET" up
+  t list-windows -t =fleet -F '#W' | grep -qx mine
 }
 
 @test "up: window overview runs its loop, the first guest's btop to its right" {
@@ -326,9 +341,43 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
 }
 
 @test "doctor: all good exits 0 (D14)" {
+  export FLEET_DECK_CMD=agent-deck
   run "$FLEET" doctor
   [ "$status" -eq 0 ]
   [[ "$output" != *FAIL* ]]
+  [[ "$output" == *"ok    agent-deck v1.0.0"* ]]
+  [[ "$output" == *"ok    agent-deck config $FLEET_DECK_CONFIG"* ]]
+}
+
+@test "doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix" {
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  agent-deck-not-in-tests not on PATH, so no deck window: install it with $FLEET_DECK_INSTALL"* ]]
+  export FLEET_DECK_CMD=agent-deck
+  echo 0.9.0 > "$FLEET_FIXTURES/deck-version"
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  agent-deck: Agent Deck v0.9.0, pinned v1.0.0: run $FLEET_DECK_INSTALL"* ]]
+  echo 1.0.0 > "$FLEET_FIXTURES/deck-version"
+  rm "$FLEET_FIXTURES/deck-config.toml"
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  no agent-deck config $FLEET_DECK_CONFIG: deck has no guests as remotes"* ]]
+  # FLEET_DECK_CMD empty: no deck wanted, nothing to check
+  FLEET_DECK_CMD='' run "$FLEET" doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok    agent-deck: off (FLEET_DECK_CMD empty)"* ]]
+}
+
+@test "doctor: the pin is agent-deck-install's, in the checkout fleet runs from" {
+  unset FLEET_DECK_INSTALL
+  export FLEET_DECK_CMD=agent-deck
+  echo "$(sed -n 's/^version=//p' "$ROOT/agent-deck/dot-local/bin/agent-deck-install")" > "$FLEET_FIXTURES/deck-version"
+  run "$FLEET" doctor
+  [ "$status" -eq 0 ]
+  echo 0.9.0 > "$FLEET_FIXTURES/deck-version"
+  run "$FLEET" doctor
+  [[ "$output" == *"pinned v"*"run $ROOT/agent-deck/dot-local/bin/agent-deck-install"* ]]
 }
 
 @test "doctor: a failed guest ssh shows ssh's own reason (D14)" {

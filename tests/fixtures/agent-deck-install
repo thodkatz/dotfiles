@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# agent-deck-install as fleet reads it: only its pin.
+version=1.0.0
