@@ -1,0 +1,20 @@
+# Agent Deck (https://github.com/asheshgoplani/agent-deck): window 1 (`deck`) of fleet's session runs its TUI,
+# each agentvm guest one [remotes.<name>]. The binary is pinned by agent-deck-install, so it never updates
+# itself, here or on a remote. Deck's own writes (`remote add`, its settings screen) replace this stowed link
+# with a copy: edit this file in dotfiles instead.
+
+[updates]
+  auto_update = false
+  auto_update_remotes = false
+  auto_install = false
+  auto_restart = false
+  check_enabled = false
+  sweep_remotes = false
+  manage_timer = false
+  notify_in_cli = false
+
+# The guests, as fleet reaches them (agentvm@<ip>, over the tailnet; the key from ~/.ssh/config or the agent).
+# Each has the same pinned agent-deck in ~/.local/bin, not on a non-login ssh's PATH.
+[remotes.thinkrepos]
+  host = "agentvm@192.168.123.51"
+  agent_deck_path = "/home/agentvm/.local/bin/agent-deck"

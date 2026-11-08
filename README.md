@@ -8,7 +8,9 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo apt install stow   # if not already installed
-stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode
+mkdir -p ~/.config/agent-deck ~/.local/bin   # so stow links agent-deck's files into them, not the directories
+stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck
+agent-deck-install      # the pinned Agent Deck (below)
 ```
 
 (run from the repo root; `-R` restows, so it's safe to rerun after editing a package or to
@@ -17,6 +19,14 @@ apply just the packages you list, e.g. `stow -t "$HOME" --dotfiles -R git` for a
 The `git` package includes `dot-config/git/ignore`, which Git treats as the default global
 excludes file, so patterns there (currently `.agentvm.yml`) are ignored in every repo without
 touching any project's own `.gitignore`.
+
+`agent-deck` holds [Agent Deck](https://github.com/asheshgoplani/agent-deck)'s config
+(`~/.config/agent-deck/config.toml`: self-updates off, each agentvm guest a `[remotes.<name>]`) and
+`agent-deck-install`, which installs the pinned release (v1.16.38, its tarball's sha256 checked) into
+`~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop. Each guest needs the
+same version, which deck runs over ssh: installed there by hand (the same URL and sha256) until agent-methodology
+pins it for guests. Deck's own writes (`remote add`, its settings screen) replace
+the stowed link with a copy: edit the file in dotfiles instead, then `stow -R agent-deck`.
 
 ## tmux
 
@@ -55,7 +65,8 @@ After pulling changes to `tmux/` (e.g. the gruvbox theme, which dropped catppucc
 ```shell
 # Laptop
 cd ~/repos/dotfiles && git pull
-stow -t "$HOME" --dotfiles -R tmux    # links any new file; edits to linked ones are live already
+mkdir -p ~/.config/agent-deck && stow -t "$HOME" --dotfiles -R tmux agent-deck   # links any new file; edits to linked ones are live already
+agent-deck-install                    # once, and again after a pin bump
 # in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
 # and prefix F in the fleet session: its tabs, pane borders, overview and hint take the new look
 
@@ -113,10 +124,12 @@ always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it ad
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
 | `prefix F` / `fleet sync` | add panes for new sessions, close panes of sessions that ended; between syncs, every 20 s, a pane follows its session's hops (hand-off, usage-limit move, resume) in place, nothing else changes on its own |
+| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
+| overview2 window | after overview, refreshed every 30 s: each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs) and its status row count; the first guest's btop to its right |
 | overview window | one row per guest: its `status.sh` table, and to its right its resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
 | `prefix F` in a pane ssh'd into a guest | after `claudes -d` there: that pane becomes the session's pane, no second one to close |
 | `C-]` in an agent pane | detach: the pane closes, the agent keeps running; `prefix F` brings the pane back |
-| status bar `nixos ●3 ◆2  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
+| status bar `nixos ●3 ◆2 ✉1  ↻1` | per host, in its tab colour: `●` live sessions, `◆` sessions needing you (stalled or blocked, or asking once the supervisor reports deck's activity), `✉` open inbox items (blue, left out at 0); `↻`: sessions with no pane yet (`prefix F`); `✗`: host unreachable |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
 
 Agent panes show their state and host on their border (`● impl/x alive  nixos`, as of the last 20 s refresh): `●` alive

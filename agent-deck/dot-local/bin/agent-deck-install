@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Install the pinned Agent Deck release into ~/.local/bin/agent-deck: fetch its linux tarball, check it against
+# the pinned sha256, unpack the binary. Does nothing when that version is already there. A bump changes both
+# lines below, and agent-methodology's pin (shared/agent-deck.version) with them.
+set -euo pipefail
+
+version=1.16.38
+sha256=f7971f893cfc0e255fb6bdd281bef2119915e832d6970f386284127b00b63536   # agent-deck_<version>_linux_amd64.tar.gz
+
+[ "$(uname -sm)" = "Linux x86_64" ] || { echo "agent-deck-install: only linux amd64 is pinned" >&2; exit 1; }
+dest=${AGENT_DECK_BIN:-$HOME/.local/bin/agent-deck}
+if [ -x "$dest" ] && [ "$("$dest" --version 2>/dev/null)" = "Agent Deck v$version" ]; then
+  echo "agent-deck-install: v$version already at $dest"; exit 0
+fi
+tar=agent-deck_${version}_linux_amd64.tar.gz
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+curl -fsSL -o "$tmp/$tar" "https://github.com/asheshgoplani/agent-deck/releases/download/v$version/$tar"
+(cd "$tmp" && echo "$sha256  $tar" | sha256sum -c --quiet)
+tar -xzf "$tmp/$tar" -C "$tmp" agent-deck
+mkdir -p "${dest%/*}"
+install -m 755 "$tmp/agent-deck" "$dest"
+"$dest" --version

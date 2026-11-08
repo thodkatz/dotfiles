@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # fleet: one tmux session showing every agent session on the microVM guests of
 # the hosts in ~/.config/fleet/hosts (or, with --local, of this host alone).
-# Window `overview` has one pane per guest running its supervisor's status.sh;
+# Window `deck` (when agent-deck is installed) is Agent Deck's TUI, the guests its
+# remotes; window `overview` has one pane per guest running its supervisor's status.sh;
+# window `overview2` every guest's open inbox items and status count, btop beside;
 # then one window per session running under dtach (named for its repo and
 # branch, coloured for its host), its interactive pane attached over ssh. Syncs only when asked (prefix F, `fleet sync`); between
 # syncs, the hint loop follows hops in the panes it has, in place.
@@ -24,6 +26,9 @@ if [ "${FLEET_SSH_MUX:-1}" != 0 ] && [ $(( ${#STATE} + 45 )) -lt 108 ]; then
 fi
 mux_dir() { [ ${#MUX_OPTS[@]} = 0 ] || { mkdir -p "$STATE/ssh" && chmod 700 "$STATE/ssh"; }; }
 LOCAL=0
+# The overview panes' loop version (@fleet-overview): bump it when what cmd__overview does changes, so prefix F
+# restarts the loops an older fleet left running (README, *Update and run*).
+OVERVIEW_STAMP=5
 
 die() { echo "fleet: $*" >&2; exit 1; }
 
@@ -98,14 +103,24 @@ guests() {
   rm -rf "$tmp"
 }
 
-# The script a guest runs (`bash -s -- json|table`): find the agent-supervise
+# The script a guest runs (`bash -s -- json|inbox-json|table`): find the agent-supervise
 # user unit's status.sh and AGENT_SUPERVISE_REPOS, then run it. Not `bash -l`:
-# NixOS's /etc/profile resets PATH. json (discover) skips the forge calls, most
+# NixOS's /etc/profile resets PATH. json skips the forge calls, most
 # of a run's time, for fields fleet doesn't read; --json comes first, as an older
-# status.sh reads only $1 and ignores the rest.
+# status.sh reads only $1 and ignores the rest. inbox-json (discover) first prints
+# `fleet:inbox`, each inbox item not closed as `<n><tab><key>=<value>` lines (the
+# item files: INBOX.md's lines have no `continue`), then `fleet:status`, then json's.
 probe_script() {
   cat <<'EOF'
 mode=${1:-table}
+if [ "$mode" = inbox-json ]; then
+  echo fleet:inbox
+  for f in "${XDG_STATE_HOME:-$HOME/.local/state}"/agent-sessions/inbox/[0-9]*; do
+    # awk, not sed: a file without its last newline must not run into the next item or fleet:status
+    [ -f "$f" ] && ! grep -qx state=closed "$f" && awk -v n="${f##*/}" '{ print n "\t" $0 }' "$f"
+  done
+  echo fleet:status
+fi
 unit=agent-supervise.service
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 if [ "$(systemctl --user show "$unit" -p LoadState --value 2>/dev/null)" != loaded ]; then
@@ -122,7 +137,7 @@ envval() {
   printf '%s' "$v"
 }
 status_sh=${path%/*}/status.sh
-AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $([ "$mode" = json ] && echo --json --no-forge)
+AGENT_SUPERVISE_REPOS=$(envval AGENT_SUPERVISE_REPOS) TMPDIR=$(envval TMPDIR) "$status_sh" $(case $mode in *json) echo --json --no-forge ;; esac)
 EOF
 }
 
@@ -136,9 +151,19 @@ status_of() {
   if [ "$out" = fleet:no-supervisor ]; then echo "no supervisor"; else printf '%s\n' "$out"; fi
 }
 
-# Probe every guest in parallel; write [{host, guest, ip, status, rows}] to $1
+# The probe's inbox lines (`<n><tab><key>=<value>`) on stdin -> a JSON array of items, {n, <key>: <value>…},
+# newest first.
+inbox_items() {
+  jq -Rn '[inputs | capture("^(?<n>[0-9]+)\t(?<k>[^=]*)=(?<v>.*)$")?] | group_by(.n)
+    | map(.[0].n as $n | reduce .[] as $x ({n: ($n | tonumber)}; .[$x.k] = $x.v))
+    | sort_by(-((.opened // "0") | tonumber? // 0))'
+}
+
+# Probe every guest in parallel; write [{host, guest, ip, status, rows, inbox}] to $1
 # atomically (sync and the hint loop may run at once). status: ok,
-# unreachable, no-supervisor or error (status.sh printed no JSON array).
+# unreachable, no-supervisor or error (status.sh printed no JSON array); inbox: the
+# guest's open inbox items (inbox_items), whether status.sh ran or not (no-supervisor, error), but none
+# when the probe failed (unreachable: ssh, or status.sh exiting non-zero).
 discover() {
   local out=$1 tmp i=0 h g ip
   mkdir -p "${out%/*}"
@@ -146,14 +171,19 @@ discover() {
   while read -r h g ip; do
     i=$((i + 1))
     (
-      rows='[]' status=unreachable r=''
-      if [ "$g" != - ] && r=$(probe "$ip" json); then
+      rows='[]' status=unreachable r='' inbox='[]' it=''
+      if [ "$g" != - ] && r=$(probe "$ip" inbox-json); then
+        case $r in fleet:inbox$'\n'*)
+          it=${r#fleet:inbox$'\n'} it=${it%%fleet:status*} r=${r#*$'\n'fleet:status} r=${r#$'\n'}
+          inbox=$(inbox_items <<<"$it") || inbox='[]' ;;
+        esac
         if [ "$r" = fleet:no-supervisor ]; then status=no-supervisor
         elif jq -e 'type == "array"' >/dev/null 2>&1 <<<"$r"; then status=ok rows=$r
         else status=error; fi
       fi
       jq -n --arg host "$h" --arg guest "$g" --arg ip "$ip" --arg status "$status" --argjson rows "$rows" \
-        '{host: $host, guest: $guest, ip: $ip, status: $status, rows: $rows}' > "$tmp/$(printf %04d "$i").json"
+        --argjson inbox "$inbox" '{host: $host, guest: $guest, ip: $ip, status: $status, rows: $rows, inbox: $inbox}' \
+        > "$tmp/$(printf %04d "$i").json"
     ) &
   done < <(guests)
   wait
@@ -320,7 +350,7 @@ pane_guest_ip() {
 # format, so it is built with commands: the resources panes out, the status panes stacked, each one joined back
 # beside its own. tiled when the window holds a pane of neither kind (one made by hand).
 overview_layout() {
-  local w="=$1:overview" W pid g r l
+  local w="=$1:=overview" W pid g r l
   declare -A resof=()
   local st=()
   while IFS=$'\037' read -r pid g r; do   # not a tab: read collapses a run of them, and one field is empty
@@ -390,6 +420,7 @@ sync_layout() {
   d=$(sdir "$s"); json=$d/fleet.json
   SYNC_ADDED=0 SYNC_CLOSED=0 SYNC_RENAMED=0 SYNC_HERE=0 SYNC_MOVED=0
   follow_panes "$s"   # sets SYNC_RETAGGED
+  layout_c_windows "$s"
   # att: the attachable entries; bysock: each one's entry by "<ip> <sock>", the dtach a pane attaches to. One
   # chain.sh runs every hop of a chain in the same dtach, each hop a new entry, so a pane follows its socket, and a
   # socket has one pane: a second would mirror the first, scrolling included.
@@ -401,31 +432,31 @@ sync_layout() {
 
   # Overview: one pane per guest, its border tagged with the guest's host and that host's colour, on every sync
   # (a pane from before the tags gets them too).
-  have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
+  have=$(tmx list-panes -t "=$s:=overview" -F '#{@fleet-guest}' 2>/dev/null)
   while IFS=$'\t' read -r g h; do
     if ! grep -qxF -- "$g" <<<"$have"; then
-      pid=$(tmx split-window -d -t "=$s:overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
-      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 4
-      tmx select-layout -t "=$s:overview" tiled >/dev/null
+      pid=$(tmx split-window -d -t "=$s:=overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
+      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
+      tmx select-layout -t "=$s:=overview" tiled >/dev/null
     fi
   done < <(jq -r '.[] | select(.guest != "-") | [.guest, .host] | join("\t")' "$json")
   # Beside each guest's status, to its right, its resources: btop over ssh (CPU, memory, disks), so a VM running
   # out of one shows. On every sync, so a fleet from before them gets them too; then one row per guest.
   local res added=0
-  res=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-res-guest}' 2>/dev/null)
+  res=$(tmx list-panes -t "=$s:=overview" -F '#{@fleet-res-guest}' 2>/dev/null)
   while IFS=$'\t' read -r pid g; do
     [ -n "$g" ] && ! grep -qxF -- "$g" <<<"$res" || continue
     pid=$(tmx split-window -h -d -t "$pid" -P -F '#{pane_id}' "$(self_cmd _resources "$s" "$g")") || continue
     tmx set -p -t "$pid" @fleet-res-guest "$g"; added=1
-  done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}' 2>/dev/null)
+  done < <(tmx list-panes -t "=$s:=overview" -F $'#{pane_id}\t#{@fleet-guest}' 2>/dev/null)
   [ "$added" = 0 ] || overview_layout "$s"
   while IFS=$'\t' read -r pid g v; do
-    [ -n "$g" ] || { g=$(tmx display -p -t "$pid" '#{@fleet-res-guest}') && [ -n "$g" ] || continue; v=4; }
+    [ -n "$g" ] || { g=$(tmx display -p -t "$pid" '#{@fleet-res-guest}') && [ -n "$g" ] || continue; v=$OVERVIEW_STAMP; }
     h=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .host) // ""' "$json")
     tmx set -p -t "$pid" @fleet-guest-host "$h" \; set -p -t "$pid" @fleet-guest-colour "${hcol[$h]:-#ebdbb2}" 2>/dev/null
     # A pane started by an older fleet runs that fleet's loop, which a pull does not change: restart it.
-    [ "$v" = 4 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 4
-  done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
+    [ "$v" = "$OVERVIEW_STAMP" ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
+  done < <(tmx list-panes -t "=$s:=overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
 
   # A window made before the host tags, named <host>·<repo>: tagged with its host and repo, its name fleet's, so
   # name_windows below renames it, whether or not this sync adds a pane to it (prefix r alone leaves it as it was).
@@ -479,7 +510,7 @@ sync_layout() {
   # attended (unattended 0) attachable entry with no pane, never the supervisor's unattended ones.
   local here_s here_tags
   if [ -n "$here" ] && IFS=$'\037' read -r here_s here_tags pid < <(tmx display -p -t "$here" \
-      $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}\037#{pane_pid}' 2>/dev/null) &&
+      $'#{session_name}\037#{@fleet-entry}#{@fleet-guest}#{@fleet-res-guest}#{@fleet-overview2}#{@fleet-deck}\037#{pane_pid}' 2>/dev/null) &&
     [ "$here_s" = "$s" ] && [ -z "$here_tags" ] && ip=$(pane_guest_ip "$pid" "$json"); then
     while IFS=$'\t' read -r entry sock host repo; do
       [ -z "${paned[$entry]:-}" ] && [ -z "${sockpaned["$ip $sock"]:-}" ] || continue
@@ -528,6 +559,40 @@ sync_layout() {
   name_windows "$s"
 }
 
+# Layout C's windows (agent-methodology #127 D20, step 0), beside fleet's own until its session windows go: `deck`,
+# first, Agent Deck's TUI (FLEET_DECK_CMD, default agent-deck; none when it isn't installed), the guests its remotes
+# (~/.config/agent-deck/config.toml); `overview2`, after `overview`, its loop (_overview2) and the first guest's btop
+# to its right. On every sync, so a fleet from before them gets them; an overview2 loop an older fleet started
+# (@fleet-overview2 not this one's stamp) is restarted.
+layout_c_windows() {
+  local s=$1 deck=${FLEET_DECK_CMD-agent-deck} pid v first w
+  if [ -n "$deck" ] && command -v "$deck" >/dev/null &&
+    ! tmx list-windows -t "=$s" -F '#{@fleet-deck}' | grep -qx 1; then
+    w=$(tmx list-windows -t "=$s" -F '#{window_id}' | head -n 1)
+    # deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it looks for its sessions
+    # on fleet's server, where they aren't, and fails to attach
+    pid=$(tmx new-window -d -b -t "$w" -n deck -P -F '#{pane_id}' \
+      "env -u TMUX -u TMUX_PANE AGENT_DECK_ALLOW_OUTER_TMUX=1 $(printf %q "$deck")") &&
+      tmx set -w -t "$pid" @fleet-deck 1
+  fi
+  # its pane: tagged, or (a tag lost) running _overview2
+  IFS=$'\037' read -r pid v < <(tmx list-panes -s -t "=$s" -F $'#{pane_id}\037#{@fleet-overview2}\037#{pane_start_command}' |
+    awk -F '\037' '$2 != "" || $3 ~ / _overview2 / { print $1 "\037" $2; exit }')
+  if [ -n "${pid:-}" ]; then
+    [ "$v" = 1 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview2 "$s")" \; set -p -t "$pid" @fleet-overview2 1
+  else
+    pid=$(tmx new-window -d -a -t "=$s:=overview" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")" 2>/dev/null ||
+      tmx new-window -d -t "=$s:" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")") || return 0
+    tmx set -p -t "$pid" @fleet-overview2 1
+  fi
+  # its btop, on every sync: one closed, or none while no guest answered, comes back
+  tmx list-panes -t "$pid" -F '#{@fleet-res-guest}' | grep -q . && return 0
+  first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
+  [ -n "$first" ] && [ "$first" != - ] || return 0
+  pid=$(tmx split-window -h -d -l 72 -t "$pid" -P -F '#{pane_id}' "$(self_cmd _resources "$s" "$first")") &&
+    tmx set -p -t "$pid" @fleet-res-guest "$first"
+}
+
 # One agent pane per window: a window from before (a repo's sessions tiled in one) keeps its first agent pane, and
 # each other one moves to a window of its own right after it, with its host and repo tags, named for its repo and
 # its own branch. A pane that isn't an agent's (a shell opened by hand) stays where it is.
@@ -550,9 +615,16 @@ split_windows() {
 
 # --- hint ----------------------------------------------------------------
 
+# A status row's counts (layout C's hint, agent-methodology #127 D20): live and asking from deck's activity
+# (working, idle, asking) once a row has one; until then live is `live` alive and no kind, and asking what needs you
+# (a kind: stalled and the like, or blocked).
+COUNT_DEFS='def live: if (.activity // "") != "" then (.activity | IN("working", "idle", "asking"))
+    else .live == "alive" and (.kind // "") == "" end;
+  def asking: if (.activity // "") != "" then .activity == "asking" else (.kind // "") != "" or .state == "blocked" end;'
+
 # Write <state>/<s>/hint from its fleet.json, in tmux styles for status-right:
-# per host its name in its colour, `●N` live sessions and `◆M` sessions needing
-# you (stalled or blocked; left out at 0) or `✗` when unreachable, then `↻K`
+# per host its name in its colour, `●N` live sessions, `◆M` asking ones and `✉O`
+# open inbox items (each left out at 0), or `✗` when unreachable, then `↻K`
 # for attachable entries with no pane.
 hint_write() {
   local s=$1 d k entry psock ip sock tmp
@@ -568,13 +640,14 @@ hint_write() {
     [ -n "${paned[$entry]:-}" ] || [ -n "${paned["$ip $sock"]:-}" ] || k=$((k + 1))
   done < <(attachable "$d/fleet.json")
   tmp=$(mktemp "$d/.hint.XXXXXX") || return 1   # the loop and a sync may write at once
-  jq -r --argjson k "$k" --argjson c "$(host_colours "$d/fleet.json" | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')" '
+  jq -r --argjson k "$k" --argjson c "$(host_colours "$d/fleet.json" | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}')" "$COUNT_DEFS"'
     group_by(.host) | map(.[0].host as $h | "#[fg=\($c[$h] // "default")]\($h)#[default] "
       + if all(.[]; .status != "ok") then "#[fg=#fb4934]✗#[default]"
         else [.[] | select(.status == "ok") | .rows[]] as $r
-          | ([$r[] | select((.kind // "") != "" or .state == "blocked")] | length) as $m
-          | "#[fg=#b8bb26]●\([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)#[default]"
+          | ([$r[] | select(asking)] | length) as $m | ([.[] | .inbox[]?] | length) as $o
+          | "#[fg=#b8bb26]●\([$r[] | select(live)] | length)#[default]"
             + if $m > 0 then " #[fg=#d3869b]◆\($m)#[default]" else "" end
+            + if $o > 0 then " #[fg=#83a598]✉\($o)#[default]" else "" end
         end)
     | join("  ") + (if $k > 0 then "  #[fg=#928374]↻\($k)#[default]" else "" end)' "$d/fleet.json" > "$tmp" && mv -f "$tmp" "$d/hint"
   rm -f "$tmp"
@@ -612,7 +685,7 @@ cmd_up() {
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
   pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$first")") \
     || die "could not start tmux session $s"
-  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 4
+  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" 1
   [ -n "${FLEET_NO_HINTLOOP:-}" ] || tmx run-shell -b "$(self_cmd _hintloop "$s")"
@@ -740,14 +813,47 @@ cmd__overview() {
     ip=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .ip) // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
     out=$(status_of "$g" "$ip")
     # The border (tmux.conf) says which guest; this is its live count, what needs you, and when.
-    tmx set -p -t "${TMUX_PANE:-}" @fleet-summary "$(jq -r --arg g "$g" '
+    tmx set -p -t "${TMUX_PANE:-}" @fleet-summary "$(jq -r --arg g "$g" "$COUNT_DEFS"'
       [.[] | select(.guest == $g)][0] // {} | if .status != "ok" then "#[fg=#fb4934]✗ \(.status // "unknown")"
-      else [.rows[]?] as $r | ([$r[] | select((.kind // "") != "" or .state == "blocked")] | length) as $m
-        | "#[fg=#b8bb26]●\([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)"
+      else [.rows[]?] as $r | ([$r[] | select(asking)] | length) as $m
+        | "#[fg=#b8bb26]●\([$r[] | select(live)] | length)"
           + if $m > 0 then " #[fg=#d3869b]◆\($m)" else "" end end' "$(sdir "$s")/fleet.json" 2>/dev/null)  #[fg=#928374]$ip $(date +%H:%M)" 2>/dev/null
     clear
     colour_table <<<"$out"
     sleep "${FLEET_OVERVIEW_INTERVAL:-15}"
+  done
+}
+
+# Layout C's overview, as text: per guest (in the hosts file's order) its name and host, each open inbox item
+# (`✉ #<n> <kind> <branch>`, then its continue, or what it needs when it has none), then its status.sh row count;
+# `✗ unreachable` for a guest or host that didn't answer. $1: a discover file.
+overview2_render() {
+  jq -r 'def q: if . == null or . == "" then "?" else tostring end;
+    map((if .guest == "-" then .host else "\(.guest) · \(.host)" end) + "\n"
+      + if .status == "unreachable" then "  ✗ unreachable"
+        else (if (.inbox // []) == [] then "  (no open items)"
+              else [.inbox[] | "  ✉ #\(.n) \(.kind | q) \(.branch | q)\n      "
+                + if (.continue // "") != "" then .continue else "needs: \(.needs | q)" end] | join("\n") end)
+          + "\n  status: " + if .status == "ok" then (.rows | length | if . == 1 then "1 row" else "\(.) rows" end)
+            elif .status == "no-supervisor" then "no supervisor" else "error" end
+        end) | join("\n\n")' "$1"
+}
+
+# Pane command (window overview2): every guest's inbox and status, rediscovered every FLEET_OVERVIEW_INTERVAL
+# (30 s) into its own file, one ssh per guest over the shared connection. --once: print it once, no clear.
+cmd__overview2() {
+  local s='' once=0 out f
+  while [ $# -gt 0 ]; do
+    case $1 in --once) once=1 ;; *) s=$1 ;; esac
+    shift
+  done
+  s=${s:-$(default_session)} f=$(sdir "${s:-$(default_session)}")/overview2.json
+  while :; do
+    discover "$f"
+    out=$(overview2_render "$f")
+    if [ "$once" = 1 ]; then printf '%s\n' "$out"; return 0; fi
+    clear; printf '%s\n' "$out"
+    sleep "${FLEET_OVERVIEW_INTERVAL:-30}"
   done
 }
 
@@ -824,6 +930,7 @@ main() {
     sync) cmd_sync "$@" ;;
     hint) cmd_hint "$@" ;;
     _overview) cmd__overview "$@" ;;
+    _overview2) cmd__overview2 "$@" ;;
     _resources) cmd__resources "$@" ;;
     _colour) colour_table ;;
     _attach) cmd__attach "$@" ;;
