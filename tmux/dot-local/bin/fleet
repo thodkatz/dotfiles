@@ -258,11 +258,13 @@ host_colours() {
 # ps, not /proc: macOS has no /proc. Nothing when the TUI is on its list.
 deck_attached() {
   local p words host i ip
-  for p in $(ps -A -o pid=,ppid=,comm= | awk -v root="$1" '
-    { pid[NR] = $1; ppid[NR] = $2; n = split($3, c, "/"); comm[NR] = c[n] }
+  # an ssh: its first word, or its second after a shell (a script named ssh, whose comm is the shell's)
+  for p in $(ps -A -o pid=,ppid=,args= | awk -v root="$1" '
+    { pid[NR] = $1; ppid[NR] = $2; a = $3; b = $4; sub(/.*\//, "", a); sub(/.*\//, "", b)
+      ssh[NR] = a == "ssh" || (a ~ /^(ba)?sh$/ && b == "ssh") }
     END { under[root] = 1
       do { more = 0; for (i = 1; i <= NR; i++) if (under[ppid[i]] && !under[pid[i]]) { under[pid[i]] = 1; more = 1 } } while (more)
-      for (i = 1; i <= NR; i++) if (under[pid[i]] && comm[i] == "ssh") print pid[i] }'); do
+      for (i = 1; i <= NR; i++) if (under[pid[i]] && ssh[i]) print pid[i] }'); do
     # Its arguments after the word that ran it: `ssh ...`, or `bash /path/ssh ...` for a script named ssh
     read -ra words <<<"$(ps -o args= -p "$p")"
     for ((i = 0; i < ${#words[@]}; i++)); do [ "${words[i]##*/}" != ssh ] || break; done

@@ -1,0 +1,11 @@
+# Agent Deck's config as fleet reads it: a [remotes.<name>] per guest.
+[updates]
+  auto_update = false
+
+[remotes.thinkrepos]
+  host = "agentvm@192.168.123.51"
+  agent_deck_path = "/home/agentvm/.local/bin/agent-deck"
+
+[remotes.repos]
+  host = "agentvm@192.168.122.51"
+  agent_deck_path = "/home/agentvm/.local/bin/agent-deck"
