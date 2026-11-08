@@ -223,6 +223,13 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [ "$(plain < "$FLEET_STATE/fleet/hint")" = "nixos ●3 ◆1  thinkcentre ●1 ✉1" ]
 }
 
+@test "overview: a row missing fields shows ? and -" {
+  echo '[{"repo": "/workspace/agent-methodology", "state": "running"}]' > "$FLEET_FIXTURES/guest-192.168.123.51.json"
+  run "$FLEET" _overview fleet --once
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'  status: 1 row\n    ?  ?  -' ]]
+}
+
 @test "overview: an item with no continue shows what it needs" {
   sed -i '/^continue=/d' "$FLEET_FIXTURES/inbox-192.168.123.51/21"
   run "$FLEET" _overview fleet --once

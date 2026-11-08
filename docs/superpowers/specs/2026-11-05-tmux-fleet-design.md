@@ -42,14 +42,14 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
 | 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
 | 14 | `fleet doctor` checks each prerequisite (ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`, `tmux`, `jq`, `ssh`) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>` |
-| 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `state`, `kind`, `mode`, `activity`, `gate`, `deck_id`, `prev`; a missing field shows `?` (or `-` for activity) and never stops a round | *Contract consumed* | bats: the overview's rows from fixtures in 3a's shape |
+| 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `state`, `kind`, `mode`, `activity`, `gate`, `deck_id`, `prev`; a missing field shows `?` (or `-` for activity) and never stops a round | *Contract consumed* | bats: `"overview lists both guests' open items and status rows"` (fixtures in 3a's shape), `"overview: a row missing fields shows ? and -"` |
 
 ## Early output
 
-The user's own fleet, on the laptop, after slice 2: `fleet` started with both hosts live, a screenshot or a
-`tmux capture-pane` of the overview and of one agent window with its session attached. The user
-judges whether the overview answers "what is running, what needs me" at a glance and whether agent panes are
-distinguishable (decision 12). Slice 1 has its own smaller sample: the restyled bar and borders on the laptop.
+The user's own fleet, on the laptop: `fleet` started with both hosts live, a screenshot or a `tmux capture-pane`
+of the overview and of the deck window with a session attached. The user judges whether the overview answers "what
+is running, what needs me" at a glance and whether fleet's panes are told apart from their own shells (decision 12).
+(Before layout C, after slice 2, this was the overview and one agent window; Clarification 20.) Slice 1 has its own smaller sample: the restyled bar and borders on the laptop.
 
 ## Where things live
 
@@ -90,7 +90,8 @@ For each host in `~/.config/fleet/hosts` (or, under `--local`, this machine alon
 `$(dirname ExecStart)/status.sh`, and run it with `--json --no-forge` and that `AGENT_SUPERVISE_REPOS`. This is the
 supervisor's own view by construction: no second list of repos to keep. `--no-forge` (agent-methodology #72)
 skips the PR listings and gate labels, most of a run's time and no field fleet reads (decision 15): a blocked row
-stays `state=blocked`, so the `◆` count is the same. The overview's table keeps the forge (its PR column).
+and `◆` counts a row's `activity` (decision 10), which the forge doesn't touch. `fleet status <guest>` keeps the
+forge (its PR column).
 
 All ssh calls: `-o BatchMode=yes -o ConnectTimeout=5`, guests in parallel (background jobs, one output file each
 in a temporary directory under the session's state directory), then joined; a guest's probe runs under
@@ -169,8 +170,8 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
 - **dotfiles, every slice:** `bash -n` and `shellcheck` on `fleet`; `bats tests/fleet.bats`, which runs against a
   private tmux server (`tmux -L fleet-test`, killed in teardown) with a stub `ssh` first on `PATH` that answers
   from `tests/fixtures/` by host or IP and command. The checks in the decisions table are its cases.
-- **Laptop, manual (slice 2):** `fleet doctor` passes; `fleet` shows both hosts; typing in an agent pane reaches
-  the agent; since layout C, deck's TUI attaches a session and follows its hop (Clarification 20).
+- **Laptop, manual (slice 2):** `fleet doctor` passes; `fleet` shows both hosts; deck's TUI attaches a session and
+  follows its hop (Clarification 20).
 - **nixed (slice 3):** its *Setup* check in the VM; on the host, `nixos-rebuild build`, then after the user's
   switch, decision 3's check and `fleet --local` on `nixos`.
 
@@ -186,23 +187,12 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
 
 ## Out of scope, and follow-ups
 
-- **Agent sessions under tmux in the guests** (native read-only attach, scrollback) instead of dtach: an
-  agent-methodology change of its own, if wanted later.
 - **Marking the consumed `status.sh --json` fields as a stable interface**, with a test, in agent-methodology:
   optional, its own change; until then decision 15's tolerance covers drift.
-- **Auto-sync**: rejected (panes would move under the user's typing); the hint replaces it. Narrowed by
-  Clarification 16: the hint loop follows hops in the panes there are, in place, and nothing more.
-- **Read-only agent panes**: rejected for now in favour of interactive attach with distinct borders.
-- **Overview when every host is down**: its first pane is a `-` guest with nothing useful in it; show one line
-  saying no host answered instead.
-- **A cap on windows** (asked by the user after the first laptop run, with a per-window pane cap that Clarification
-  17 made moot: a window holds one session): today nothing limits the number of agent windows. Wanted: a cap,
-  showing only the most recent sessions (the rest stay in the overview, and the hint says how many are hidden). "Most recent" needs a time per entry, which none of the consumed `status.sh --json`
-  fields (decision 15) carries: find one in `status.sh` or add it in agent-methodology first.
 
 ## Clarifications
 
-1. **Pane title is `@fleet-title`, not `pane_title`** (decision 7) — `folded`. An agent CLI sets the terminal
+1. **Pane title is `@fleet-title`, not `pane_title`** (decision 7) — `superseded by 20`. An agent CLI sets the terminal
    title itself, which overwrites `pane_title`; the border reads the tmux user option `@fleet-title` instead.
 2. **Hint check string** (decision 10) — `folded`. The bats fixtures have, on `nixos`, two plain live rows (one
    under dtach, one in a person's terminal), one stalled and one blocked, plus a new attachable live row added
@@ -225,7 +215,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    `<host>·<repo>` windows in it. `tmux.conf` sets `@resurrect-hook-post-save-layout` to a `sed` that deletes the
    `pane` and `window` lines of sessions `fleet` and `fleet-*` from the save file (resurrect appends the file's
    path; field 2 is the session). Rewritten in *Sync* and *Plugins, keys, theme*.
-7. **A pane follows its socket across hops** (decisions 7, 8) — `folded`. Keyed by entry alone, a sync after a hop
+7. **A pane follows its socket across hops** (decisions 7, 8) — `superseded by 20`. Keyed by entry alone, a sync after a hop
    (new entry, same dtach) added a second pane on the same socket and left the old one attached forever. Panes now
    carry `@fleet-sock`; sync retags a live pane whose entry is gone onto the live entry on its socket, and the hint
    counts a socket with a pane as paned. Panes made before this change have no `@fleet-sock`, so each gets one
@@ -236,7 +226,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    misaligns tmux borders. agent-methodology's `status.sh` table uses the same icons. Sync now also retitles a pane
    whose entry is still attachable, so its icon follows `live` instead of keeping the one it was made with.
    Rewritten in decision 7. Superseded by Clarification 10.
-9. **An ended pane closes; a socket has one pane** (decisions 7, 8) — `folded`. Reported by the user (2026-11-05):
+9. **An ended pane closes; a socket has one pane** (decisions 7, 8) — `superseded by 20`. Reported by the user (2026-11-05):
    two live `impl/machine-3` panes on `agentvm-thinkrepos`, scrolling together, and a `session ended; prefix F
    syncs` pane that a sync left in place. The first was clarification 7's duplicate: the pane predated
    `@fleet-sock` and the chain hopped twice (a move, then a hand-off), and sync, keyed by entry, never closed the
@@ -246,7 +236,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    `done` row can take days; it now closes, the overview still showing the state. `prefix F` had shown nothing at
    the end, so a sync that changed nothing (status.sh can take 13 s on a guest with many blocked rows) looked like
    none ran; it now shows the line `sync` prints. Rewritten in decision 8 and *Sync*.
-10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`. Asked by the user
+10. **herdr-style glyphs, a gruvbox theme, no `·` in tabs** (decisions 6, 7, 10, 12) — `folded`, its pane tags and window colours superseded by 20. Asked by the user
    (2026-11-05): a gruvbox theme, better pane titles, no `·` divider in tab names, and icons like herdr's. herdr
    draws state as one narrow Unicode glyph (`●○◐✓×`) coloured by its theme, not as emoji or Nerd Font icons, so it
    needs no font change; Clarification 8's emoji were double-width and fixed-colour. fleet now tags each agent pane
@@ -256,7 +246,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    `@fleet-colour`), which tabs and the hint use instead of `<host>·`. catppuccin is dropped for a gruvbox palette
    in `tmux.conf`, matching nvim and doom. agent-methodology's `status.sh` table (its PR #71) is to take the same
    glyphs. Rewritten in decisions 6, 7, 10, 12, *Layout*, *Hint* and *Plugins, keys, theme*.
-11. **Emoji back, overview borders, an update that reaches running fleets** (decisions 6, 7, 8, 12) — `folded`.
+11. **Emoji back, overview borders, an update that reaches running fleets** (decisions 6, 7, 8, 12) — `superseded by 20`.
    Reported by the user (2026-11-05) after updating the laptop: "it looks wrong", no glyphs, an agent window's
    panes with no titles, and the overview's titles unchanged. Reproduced in the VM by starting the pre-10 fleet with
    catppuccin, then `source-file` of the new config (their `prefix r`) and screenshots of real alacritty: the panes
@@ -281,7 +271,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    both"; a cache was rejected, it would show stale data). An older `status.sh` reads only its first argument, so
    `--json` stays first. Rewritten in decision 5 and *Discovery*.
 
-13. **Overview rows in colour** (decision 6) — `folded`. Reported by the user (2026-11-06): "still no colors on the
+13. **Overview rows in colour** (decision 6) — `superseded by 20`. Reported by the user (2026-11-06): "still no colors on the
    status from the fleet tmux session, i can see the glyphs not colors". `status.sh` colours only on a tty, and over
    `ssh … bash -s` its stdout is a pipe. fleet now colours the table itself (`colour_table`, from `live_look`'s
    colours, so the pane borders and the rows can't disagree): each row by its leading glyph, the header bold, the
@@ -290,7 +280,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    not fleet's gruvbox ones. The overview pane's version goes to 3, so a sync restarts the panes an older fleet
    started.
 
-14. **The pane that ran `claudes -d` becomes its pane** (decision 8) — `folded`. Asked by the user (2026-11-06):
+14. **The pane that ran `claudes -d` becomes its pane** (decision 8) — `superseded by 20`. Asked by the user (2026-11-06):
    after opening a pane, ssh-ing into a guest and running `claudes -d`, prefix F added the session's pane beside it,
    and the first pane had to be closed by hand. `claudes -d` now attaches in its own terminal once it has started the
    chain under `dtach` (nixed, agentvm), and prefix F passes its pane (`-p "#{pane_id}"`): a plain shell pane of the
@@ -300,7 +290,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    guest can't reach it, a terminal title is overwritten by Claude Code, and ssh's source port need not survive the
    tailnet's NAT.
 
-15. **Each guest's resources beside its status** (decision 6) — `folded`. Asked by the user (2026-11-06): "a nice
+15. **Each guest's resources beside its status** (decision 6) — `folded`, its one btop per guest superseded by 20 (the first guest's only). Asked by the user (2026-11-06): "a nice
    bashtop or htop to the overview pane on the right side of the status … an overview of the resources, VM exhausted
    or not, by checking CPU, RAM, disk". Each overview pane gets a second pane to its right (`@fleet-res-guest`)
    running btop over ssh with only its cpu and mem boxes (mem holds the disks): btop's four boxes need 80x24, more
@@ -310,7 +300,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    break-pane/even-vertical/join-pane: tiled pairs them only for two guests, and tmux 3.8 changed the layout
    string's format. Sync adds them to a fleet from before them; a guest with no btop gets htop.
 
-16. **Panes follow hops between syncs** (decisions 8, 10) — `folded`. Reported by the user (2026-11-06): "when a pane
+16. **Panes follow hops between syncs** (decisions 8, 10) — `superseded by 20`. Reported by the user (2026-11-06): "when a pane
    hops then the pane on the tmux isn't updated and we have to manually do refresh again; panes should be updated
    to each hop when a session closes and is handed over, whether due to ctx or limit or whatever." A hop under one
    `chain.sh` (a hand-off, a usage-limit account move) is a new entry on the same dtach, so the attach went on but
@@ -321,7 +311,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    astray. The successor link is `status.sh --json`'s `prev`, already there (agent-methodology #86), so that repo
    needs no change.
 
-17. **Each session in a window of its own** (decision 6) — `folded`. Asked by the user (2026-11-06): "open another PR
+17. **Each session in a window of its own** (decision 6) — `superseded by 20`. Asked by the user (2026-11-06): "open another PR
    to have each session on a window and not split panes within one". A repo's window tiled every session in it, each
    pane smaller with every session added, until tmux refused the split. Sync now opens a window per attachable
    session, named for its repo and tagged with its host as before, right after that host's last window for the repo,
@@ -329,7 +319,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    attaches going on, a hand-opened shell staying), so a `git pull` and one prefix F reach a running fleet. The
    pane cap of the follow-up *Caps* is moot; its window cap stays a follow-up. Rewritten in decision 6, *Layout* and
    *Sync* step 2.
-18. **A window says what its session works on** (decision 6) — `folded`. Asked by the user (2026-11-07): a fleet
+18. **A window says what its session works on** (decision 6) — `superseded by 20`. Asked by the user (2026-11-07): a fleet
    window's title should say what its session works on, not only its repo; every agent-methodology window read
    `agent-methodology`, the branch only on the pane border. Windows are now named `<repo>/<branch>`, the branch's
    last `/`-part (`change/accounts-view-2` gives `agent-methodology/accounts-view-2`), at most 24 characters, and
@@ -338,7 +328,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    Clarification 10 dropped `·` from tabs, and `<host>·<repo>` is the old name the migration renames. With the name
    no longer the repo, a window carries `@fleet-repo`, which groups a repo's windows, and `@fleet-name`, the name
    fleet gave it, so one a person renamed is left alone. Rewritten in decision 6, *Layout* and *Sync* step 2.
-19. **Layout C's overview and hint** (decisions 6, 10) — `folded`. agent-methodology's Agent Deck adoption (its
+19. **Layout C's overview and hint** (decisions 6, 10) — `folded`, its window name `overview2` superseded by 20. agent-methodology's Agent Deck adoption (its
    #127, D20; slice 0, dotfiles PR #6) adds layout C beside fleet's own windows: window `deck` (Agent Deck's TUI,
    the guests as its remotes) and `overview2` (each guest's open inbox items, read from the item files, which carry
    `continue`, unlike INBOX.md's lines). Discovery's probe reads the inbox in the same ssh (mode `inbox-json`), so
@@ -350,6 +340,8 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    own session machinery goes: the per-session windows and their panes, `fleet sync` and `prefix F`, the hint loop and
    its hop following in panes, the per-guest overview panes and their colours. Window `overview2` takes the name
    `overview`; its loop writes the hint, from the rows' `activity` only. In their place, the TUI follows a hop it was
-   attached to (*Hops*). This supersedes Clarifications 1, 7, 10's pane tags, 14, 16, 17, 18 and 19's `overview2`,
-   which stay as written. Rewritten in the decisions named, *Layout*, *Hops*, *Hint*, the theme and *Contract
+   attached to (*Hops*). This supersedes Clarifications 1, 7, 9, 11, 13, 14, 16, 17 and 18, and in part 10 (pane
+   tags, window colours), 15 (one btop per guest) and 19 (`overview2`), which stay as written; the out-of-scope items
+   about auto-sync, read-only panes, the all-down overview pane, a window cap and agent sessions under tmux (deck's, now) went with them. The user approved
+   the change in agent-methodology's spec (D20). Rewritten in the decisions named, *Layout*, *Hops*, *Hint*, the theme and *Contract
    consumed*; *Sync* is gone.
