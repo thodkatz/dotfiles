@@ -1,10 +1,11 @@
 [
-  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "main", "live": "alive", "state": "running",
-   "kind": "", "entry": "e-nixed-1", "continue": "dtach -a /var/tmp/agent-sessions/e-nixed-1.sock -r winch"},
-  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "main", "live": "alive", "state": "running",
-   "kind": "", "entry": "e-nixed-term", "continue": ""},
-  {"repo": "/workspace/nixed", "worktree": "", "branch": "", "live": "blocked #4", "state": "blocked",
-   "kind": "", "entry": "e-nixed-blocked", "continue": ""},
-  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed/.claude/worktrees/impl-x", "branch": "impl/x", "live": "alive",
-   "state": "running", "kind": "stall", "entry": "e-nixed-stall", "continue": "dtach -a /var/tmp/agent-sessions/e-nixed-stall.sock -r winch"}
+  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "main", "state": "running", "kind": "",
+   "mode": "attended", "activity": "working", "gate": "", "prev": "", "deck_id": "d-nixed-1"},
+  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "main", "state": "running", "kind": "",
+   "mode": "unattended", "activity": "idle", "gate": "", "prev": "", "deck_id": "d-nixed-2"},
+  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": "", "state": "blocked", "kind": "",
+   "mode": "unattended", "activity": "", "gate": "4", "prev": "", "deck_id": "d-nixed-blocked"},
+  {"repo": "/workspace/nixed", "worktree": "/workspace/nixed/.claude/worktrees/impl-x", "branch": "impl/x",
+   "state": "running", "kind": "stall", "mode": "unattended", "activity": "asking", "gate": "", "prev": "",
+   "deck_id": "d-nixed-stall"}
 ]

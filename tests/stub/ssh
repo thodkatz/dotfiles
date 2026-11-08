@@ -30,12 +30,15 @@ case $cmd in
       [ -f "$f" ] && ! grep -qx state=closed "$f" && awk -v n="${f##*/}" '{ print n "\t" $0 }' "$f"
     done
     echo fleet:status
-    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor; else cat "$fx/guest-$dest.json"; fi ;;
-  'dtach -a '*)
-    [ ! -e "$fx/attach-lost" ] || exit 255
-    [ -e "$fx/attach-exits" ] && exit 0; exec sleep 600 ;;
+    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor; exit 0; fi
+    cat "$fx/guest-$dest.json"
+    # then the hops someone watched: <old id><tab><successor id><tab><old's tmux session>
+    echo fleet:hops
+    [ ! -e "$fx/hops-$dest" ] || cat "$fx/hops-$dest" ;;
+  # deck's attach of a remote session: held while $fx/deck-attach names it ("<ip> <id>")
+  *'session attach '*)
+    while [ "$(cat "$fx/deck-attach" 2>/dev/null)" = "$dest ${cmd##* }" ]; do sleep 0.1; done ;;
   *btop*) exec sleep 600 ;;
-  'test -S '*) [ -e "$fx/sock-alive" ] ;;
-  true|'command -v dtach') exit 0 ;;
+  true|'test -x .local/bin/agent-deck') exit 0 ;;
   *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;
 esac

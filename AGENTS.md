@@ -30,7 +30,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 |---|---|
 | [`README.md`](README.md) | you change a package or how it is installed, or touch tmux or `fleet`: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts |
 | [`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`](docs/superpowers/specs/2026-11-05-tmux-fleet-design.md) | you change `fleet` or the tmux config: its decisions D1–D15 and clarifications |
-| [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need `fleet`'s global constraints (pane options, hint format, ssh options) or how its tests were built |
+| [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need how `fleet`'s first layout and its tests were built (history: the spec wins where they differ) |
 
 ## Keep each session small
 
@@ -167,15 +167,15 @@ Each unit's PR updates its track's line; the last slice removes it.
 
 The user's dotfiles for an Arch laptop (i3, polybar, alacritty, zsh, nvim, doom, …) and, for tmux, the NixOS
 hosts too, managed with GNU Stow (*Working Conventions*). The one piece of code is `fleet`
-(`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with every agent session on every host's microVM
-guests, reading each host's `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
+(`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with Agent Deck's TUI (every host's microVM guests its
+remotes) and an overview of every guest's open inbox items and status rows, reading each host's
+`/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
-  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; a running `fleet` restarts its overview and hint
-  loops on `prefix F` only when their version stamp in `fleet` changed, so a change to what a loop does bumps
-  its stamp (`README.md`, *Update and run*).
+  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; the overview's loop runs the `fleet` on disk each
+  round, so a pull reaches a running session with no restart (`README.md`, *Update and run*).
 - **A session in a guest can't reach the laptop or the hosts' tmux**: test `fleet` with the bats suite, which
-  stubs ssh, systemctl and ip (`tests/stub`) and answers from `tests/fixtures`, never a real host.
+  stubs ssh, systemctl, ip and agent-deck (`tests/stub`) and answers from `tests/fixtures`, never a real host.
 
 ## Development workflow
 
@@ -270,8 +270,8 @@ tmux server (about four minutes; light enough to run without `methodology heavy`
 
 ```bash
 bats tests/              # tests/fleet.bats
-shellcheck tmux/dot-local/bin/fleet   # not clean today (SC1010, SC2015, SC2034): don't add new findings
+shellcheck tmux/dot-local/bin/fleet tests/stub/*   # clean: keep it so
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a
-`stow -R`, `prefix r` / `prefix F`, or nixed's switch for a plugin change). No heavy resource requests.
+`stow -R`, `prefix r`, running `fleet` again, or nixed's switch for a plugin change). No heavy resource requests.
