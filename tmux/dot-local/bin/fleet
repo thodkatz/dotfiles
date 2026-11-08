@@ -26,6 +26,9 @@ if [ "${FLEET_SSH_MUX:-1}" != 0 ] && [ $(( ${#STATE} + 45 )) -lt 108 ]; then
 fi
 mux_dir() { [ ${#MUX_OPTS[@]} = 0 ] || { mkdir -p "$STATE/ssh" && chmod 700 "$STATE/ssh"; }; }
 LOCAL=0
+# The overview panes' loop version (@fleet-overview): bump it when what cmd__overview does changes, so prefix F
+# restarts the loops an older fleet left running (README, *Update and run*).
+OVERVIEW_STAMP=5
 
 die() { echo "fleet: $*" >&2; exit 1; }
 
@@ -113,7 +116,8 @@ mode=${1:-table}
 if [ "$mode" = inbox-json ]; then
   echo fleet:inbox
   for f in "${XDG_STATE_HOME:-$HOME/.local/state}"/agent-sessions/inbox/[0-9]*; do
-    [ -f "$f" ] && ! grep -qx state=closed "$f" && sed "s/^/${f##*/}\t/" "$f"
+    # awk, not sed: a file without its last newline must not run into the next item or fleet:status
+    [ -f "$f" ] && ! grep -qx state=closed "$f" && awk -v n="${f##*/}" '{ print n "\t" $0 }' "$f"
   done
   echo fleet:status
 fi
@@ -158,7 +162,8 @@ inbox_items() {
 # Probe every guest in parallel; write [{host, guest, ip, status, rows, inbox}] to $1
 # atomically (sync and the hint loop may run at once). status: ok,
 # unreachable, no-supervisor or error (status.sh printed no JSON array); inbox: the
-# guest's open inbox items (inbox_items), read whatever the status.
+# guest's open inbox items (inbox_items), whether status.sh ran or not (no-supervisor, error), but none
+# when the probe failed (unreachable: ssh, or status.sh exiting non-zero).
 discover() {
   local out=$1 tmp i=0 h g ip
   mkdir -p "${out%/*}"
@@ -345,7 +350,7 @@ pane_guest_ip() {
 # format, so it is built with commands: the resources panes out, the status panes stacked, each one joined back
 # beside its own. tiled when the window holds a pane of neither kind (one made by hand).
 overview_layout() {
-  local w="=$1:overview" W pid g r l
+  local w="=$1:=overview" W pid g r l
   declare -A resof=()
   local st=()
   while IFS=$'\037' read -r pid g r; do   # not a tab: read collapses a run of them, and one field is empty
@@ -427,31 +432,31 @@ sync_layout() {
 
   # Overview: one pane per guest, its border tagged with the guest's host and that host's colour, on every sync
   # (a pane from before the tags gets them too).
-  have=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-guest}' 2>/dev/null)
+  have=$(tmx list-panes -t "=$s:=overview" -F '#{@fleet-guest}' 2>/dev/null)
   while IFS=$'\t' read -r g h; do
     if ! grep -qxF -- "$g" <<<"$have"; then
-      pid=$(tmx split-window -d -t "=$s:overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
-      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview 4
-      tmx select-layout -t "=$s:overview" tiled >/dev/null
+      pid=$(tmx split-window -d -t "=$s:=overview" -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$g")") || continue
+      tmx set -p -t "$pid" @fleet-guest "$g" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
+      tmx select-layout -t "=$s:=overview" tiled >/dev/null
     fi
   done < <(jq -r '.[] | select(.guest != "-") | [.guest, .host] | join("\t")' "$json")
   # Beside each guest's status, to its right, its resources: btop over ssh (CPU, memory, disks), so a VM running
   # out of one shows. On every sync, so a fleet from before them gets them too; then one row per guest.
   local res added=0
-  res=$(tmx list-panes -t "=$s:overview" -F '#{@fleet-res-guest}' 2>/dev/null)
+  res=$(tmx list-panes -t "=$s:=overview" -F '#{@fleet-res-guest}' 2>/dev/null)
   while IFS=$'\t' read -r pid g; do
     [ -n "$g" ] && ! grep -qxF -- "$g" <<<"$res" || continue
     pid=$(tmx split-window -h -d -t "$pid" -P -F '#{pane_id}' "$(self_cmd _resources "$s" "$g")") || continue
     tmx set -p -t "$pid" @fleet-res-guest "$g"; added=1
-  done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}' 2>/dev/null)
+  done < <(tmx list-panes -t "=$s:=overview" -F $'#{pane_id}\t#{@fleet-guest}' 2>/dev/null)
   [ "$added" = 0 ] || overview_layout "$s"
   while IFS=$'\t' read -r pid g v; do
-    [ -n "$g" ] || { g=$(tmx display -p -t "$pid" '#{@fleet-res-guest}') && [ -n "$g" ] || continue; v=4; }
+    [ -n "$g" ] || { g=$(tmx display -p -t "$pid" '#{@fleet-res-guest}') && [ -n "$g" ] || continue; v=$OVERVIEW_STAMP; }
     h=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .host) // ""' "$json")
     tmx set -p -t "$pid" @fleet-guest-host "$h" \; set -p -t "$pid" @fleet-guest-colour "${hcol[$h]:-#ebdbb2}" 2>/dev/null
     # A pane started by an older fleet runs that fleet's loop, which a pull does not change: restart it.
-    [ "$v" = 4 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview 4
-  done < <(tmx list-panes -t "=$s:overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
+    [ "$v" = "$OVERVIEW_STAMP" ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview "$s" "$g")" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
+  done < <(tmx list-panes -t "=$s:=overview" -F $'#{pane_id}\t#{@fleet-guest}\t#{@fleet-overview}' 2>/dev/null)
 
   # A window made before the host tags, named <host>·<repo>: tagged with its host and repo, its name fleet's, so
   # name_windows below renames it, whether or not this sync adds a pane to it (prefix r alone leaves it as it was).
@@ -575,11 +580,13 @@ layout_c_windows() {
     awk -F '\037' '$2 != "" || $3 ~ / _overview2 / { print $1 "\037" $2; exit }')
   if [ -n "${pid:-}" ]; then
     [ "$v" = 1 ] || tmx respawn-pane -k -t "$pid" "$(self_cmd _overview2 "$s")" \; set -p -t "$pid" @fleet-overview2 1
-    return 0
+  else
+    pid=$(tmx new-window -d -a -t "=$s:=overview" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")" 2>/dev/null ||
+      tmx new-window -d -t "=$s:" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")") || return 0
+    tmx set -p -t "$pid" @fleet-overview2 1
   fi
-  pid=$(tmx new-window -d -a -t "=$s:overview" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")" 2>/dev/null ||
-    tmx new-window -d -t "=$s:" -n overview2 -P -F '#{pane_id}' "$(self_cmd _overview2 "$s")") || return 0
-  tmx set -p -t "$pid" @fleet-overview2 1
+  # its btop, on every sync: one closed, or none while no guest answered, comes back
+  tmx list-panes -t "$pid" -F '#{@fleet-res-guest}' | grep -q . && return 0
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
   [ -n "$first" ] && [ "$first" != - ] || return 0
   pid=$(tmx split-window -h -d -l 72 -t "$pid" -P -F '#{pane_id}' "$(self_cmd _resources "$s" "$first")") &&
@@ -678,7 +685,7 @@ cmd_up() {
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
   pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s" "$first")") \
     || die "could not start tmux session $s"
-  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview 4
+  tmx set -p -t "$pid" @fleet-guest "$first" \; set -p -t "$pid" @fleet-overview "$OVERVIEW_STAMP"
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" 1
   [ -n "${FLEET_NO_HINTLOOP:-}" ] || tmx run-shell -b "$(self_cmd _hintloop "$s")"
@@ -806,10 +813,10 @@ cmd__overview() {
     ip=$(jq -r --arg g "$g" 'first(.[] | select(.guest == $g) | .ip) // "-"' "$(sdir "$s")/fleet.json" 2>/dev/null)
     out=$(status_of "$g" "$ip")
     # The border (tmux.conf) says which guest; this is its live count, what needs you, and when.
-    tmx set -p -t "${TMUX_PANE:-}" @fleet-summary "$(jq -r --arg g "$g" '
+    tmx set -p -t "${TMUX_PANE:-}" @fleet-summary "$(jq -r --arg g "$g" "$COUNT_DEFS"'
       [.[] | select(.guest == $g)][0] // {} | if .status != "ok" then "#[fg=#fb4934]✗ \(.status // "unknown")"
-      else [.rows[]?] as $r | ([$r[] | select((.kind // "") != "" or .state == "blocked")] | length) as $m
-        | "#[fg=#b8bb26]●\([$r[] | select(.live == "alive" and (.kind // "") == "")] | length)"
+      else [.rows[]?] as $r | ([$r[] | select(asking)] | length) as $m
+        | "#[fg=#b8bb26]●\([$r[] | select(live)] | length)"
           + if $m > 0 then " #[fg=#d3869b]◆\($m)" else "" end end' "$(sdir "$s")/fleet.json" 2>/dev/null)  #[fg=#928374]$ip $(date +%H:%M)" 2>/dev/null
     clear
     colour_table <<<"$out"

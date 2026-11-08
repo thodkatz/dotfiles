@@ -27,7 +27,7 @@ case $cmd in
     [ ! -e "$fx/hang-$dest" ] || exec sleep 600
     echo fleet:inbox
     for f in "$fx/inbox-$dest"/[0-9]*; do
-      [ -f "$f" ] && ! grep -qx state=closed "$f" && sed "s/^/${f##*/}\t/" "$f"
+      [ -f "$f" ] && ! grep -qx state=closed "$f" && awk -v n="${f##*/}" '{ print n "\t" $0 }' "$f"
     done
     echo fleet:status
     if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor; else cat "$fx/guest-$dest.json"; fi ;;

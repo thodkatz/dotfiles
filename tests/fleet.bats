@@ -541,7 +541,7 @@ old_window() {
   pold=$(t display -p -t "$old" '#{pane_pid}') pcur=$(t display -p -t "$cur" '#{pane_pid}')
   "$FLEET" sync -t fleet
   [ "$(t display -p -t "$old" '#{pane_pid}')" != "$pold" ]
-  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 4 ]
+  [ "$(t display -p -t "$old" '#{@fleet-overview}')" = 5 ]
   [ "$(t display -p -t "$cur" '#{pane_pid}')" = "$pcur" ]
 }
 
@@ -702,6 +702,18 @@ OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      c
   "$FLEET" sync -t fleet
   [ "$(t display -p -t "$p" '#{pane_pid}')" != "$old" ]
   [ "$(t display -p -t "$p" '#{@fleet-overview2}')" = 1 ]
+  # its btop, closed, comes back on the next sync, once
+  t kill-pane -t "$(t list-panes -t =fleet:overview2 -F '#{pane_id} #{@fleet-res-guest}' | awk '$2 != "" { print $1 }')"
+  "$FLEET" sync -t fleet
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -t =fleet:overview2 -F '#{@fleet-res-guest}' | grep -cx agentvm-repos)" -eq 1 ]
+}
+
+@test "sync: with window overview closed, overview2 gets no guest panes (an exact name, not a prefix)" {
+  "$FLEET" up
+  t kill-window -t =fleet:overview
+  "$FLEET" sync -t fleet
+  [ "$(t list-panes -t =fleet:=overview2 -F '#{pane_id}' | wc -l)" -eq 2 ]
 }
 
 @test "deck: with agent-deck there, window deck comes first, on up and on a sync of an older fleet; none without it" {

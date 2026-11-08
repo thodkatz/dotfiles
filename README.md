@@ -23,8 +23,9 @@ touching any project's own `.gitignore`.
 `agent-deck` holds [Agent Deck](https://github.com/asheshgoplani/agent-deck)'s config
 (`~/.config/agent-deck/config.toml`: self-updates off, each agentvm guest a `[remotes.<name>]`) and
 `agent-deck-install`, which installs the pinned release (v1.16.38, its tarball's sha256 checked) into
-`~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop and on each
-guest (deck reaches a guest's own copy over ssh). Deck's own writes (`remote add`, its settings screen) replace
+`~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop. Each guest needs the
+same version, which deck runs over ssh: installed there by hand (the same URL and sha256) until agent-methodology
+pins it for guests. Deck's own writes (`remote add`, its settings screen) replace
 the stowed link with a copy: edit the file in dotfiles instead, then `stow -R agent-deck`.
 
 ## tmux
