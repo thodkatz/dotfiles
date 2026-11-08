@@ -44,9 +44,10 @@ So a session does one bounded piece of work and hands off:
   `methodology handoff new <dir> <slug>`, a knowledge note or the investigation's output),
   commit, and end the session, **even in the middle of a unit**. The next session
   starts fresh from the handoff; with `AGENT_AUTO_CONTINUE=true`, start it yourself with
-  `methodology next <handoff path>` (under `chain.sh`, in this terminal or a new `dtach`
-  one), then stop. A new parallel session (a fresh unit's worktree) starts only with `methodology next --new
-  "<prompt>"`, never a bare `claude`/`claudeN`: only `chain.sh` moves a session off an exhausted account.
+  `methodology next <handoff path>` (it launches the next session on agent-deck), then stop. A new parallel
+  session (a fresh unit's worktree) starts only with `methodology next --new "<prompt>"`, never a bare
+  `claude`/`claudeN`: only a session `methodology next` starts can be seen, reported and resumed (on deck: seen by `methodology
+  status` once it reads deck).
 - **A fresh session starts the same way every time:** read the handoff (only the newest:
   `methodology handoff newest <plan>/handoffs` when the unit has a plan, else
   `methodology handoff newest docs/handoffs`, if there is one), `git status`, `git log --oneline -5`, `methodology worktree --prune` (merged units' worktrees, and the main checkout up to its upstream),
@@ -55,8 +56,8 @@ So a session does one bounded piece of work and hands off:
   runs only at the budget, and `methodology next --unit` only at a unit's end.
 - **Other sessions are the supervisor's, not yours.** Don't watch or poll other sessions with `methodology status` (one
   check that a session you just started came up is fine), and rescue one only when the user asks or the
-  supervisor can't reach it: the supervisor's timer (`supervise.sh`) acts on unattended ones, a person on their
-  own. A handoff never asks the next session to watch one (`sessions-and-context.md`, *Other sessions are not a
+  supervisor can't reach it: the supervisor's timer (`supervise.sh`) reports unattended ones to the inbox, and a person acts on
+  them and on their own. A handoff never asks the next session to watch one (`sessions-and-context.md`, *Other sessions are not a
   session's work*).
 - **Investigations and audits are scoped.** Each one answers a written question into a file. Wide reading
   goes to subagents, which return short summaries; a repo-wide audit is a fan-out of scoped subagent tasks
@@ -204,7 +205,7 @@ The rules that bite most often:
   (`development-workflow.md`, *Choosing a mode*).
 - **Claim before you work**: the unit's branch pushed to `origin` plus a draft PR, worked on in its own worktree,
   `.claude/worktrees/<branch, / as ->` of the main checkout (`methodology worktree <branch>`
-  makes it; `git worktree list` shows them all). **One PR open at a time per track**, and dependent work waits
+  makes it and claims it; `git worktree list` shows them all). **One PR open at a time per track**, and dependent work waits
   until that PR has merged.
 - **One review round, by the reviewer in *Reviewers***: local reviewer subagents, or a CI reviewer and, if it's
   out, the fallbacks there, in order; a mechanical PR (a pointer, copied or regenerated files) has none. Address every finding, then **merge it yourself**
