@@ -1,0 +1,12 @@
+opened=1794100000
+worktree=/workspace/agent-methodology/.claude/worktrees/impl-x-1
+session=0d1a3f17-4e7c-4685-93fc-465d9aedf2f2
+entry=0e5730d8-7f1f-4516-b6f4-2f1da0bb5204
+repo=/workspace/agent-methodology
+branch=impl/x-1
+pr=80
+kind=death
+needs=The session died (state running, exit none).
+evidence=/var/tmp/agent-chain-1000/impl-x-1.impl_x-1.r1.0d1a3f17.sock #80
+state=open
+continue=cd /workspace/agent-methodology/.claude/worktrees/impl-x-1 && /home/agentvm/.local/share/agent-methodology/gen/b80f91c6/shared/methodology next --resume /workspace/agent-methodology/.claude/worktrees/impl-x-1 --here

@@ -12,7 +12,7 @@ setup() {
   export FLEET_STATE=$BATS_TEST_TMPDIR/state
   export FLEET_TMUX_SOCKET=fleet-test-$$-$BATS_TEST_NUMBER
   export FLEET_TMUX_CONF=/dev/null
-  export FLEET_NO_HINTLOOP=1 FLEET_HINT_INTERVAL=3600 FLEET_OVERVIEW_INTERVAL=3600
+  export FLEET_DECK_CMD=agent-deck-not-in-tests FLEET_NO_HINTLOOP=1 FLEET_HINT_INTERVAL=3600 FLEET_OVERVIEW_INTERVAL=3600
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.agentvm key leaks in
   mkdir -p "$HOME"
   unset AGENTVM_KEY
@@ -30,6 +30,8 @@ NEW_ROW='{"repo": "/workspace/nixed", "worktree": "/workspace/nixed", "branch": 
 
 # An agent pane's tags for its border: entry|glyph colour branch live.
 tags() { t list-panes -s -t =fleet -F '#{@fleet-entry}|#{@fleet-glyph} #{@fleet-colour} #{@fleet-branch} #{@fleet-live}'; }
+# list-panes -f: the windows but the two overviews.
+NOT_OV='#{&&:#{!=:#W,overview},#{!=:#W,overview2}}'
 # The hint without its tmux styles.
 plain() { sed 's/#\[[^]]*\]//g'; }
 
@@ -90,6 +92,24 @@ wait_attached() {
   [ "$output" = "fleet:no-supervisor" ]
 }
 
+@test "probe script inbox-json: the inbox's items not closed, a line per key, then status.sh's JSON" {
+  export XDG_STATE_HOME=$BATS_TEST_TMPDIR/xdg
+  mkdir -p "$XDG_STATE_HOME/agent-sessions"
+  cp -r "$FLEET_FIXTURES/inbox-192.168.123.51" "$XDG_STATE_HOME/agent-sessions/inbox"
+  echo 3 > "$XDG_STATE_HOME/agent-sessions/inbox/.next"
+  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = fleet:inbox ]
+  [ "${lines[1]}" = $'21\topened=1794100000' ]
+  [ "$(grep -c $'^21\t' <<<"$output")" -eq 12 ]
+  ! grep -q $'^20\t' <<<"$output"
+  [ "${lines[13]}" = fleet:status ]
+  [ "${lines[14]}" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json --no-forge" ]
+  touch "$FLEET_FIXTURES/unit-missing"; rm -r "$XDG_STATE_HOME/agent-sessions/inbox"
+  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
+  [ "$output" = $'fleet:inbox\nfleet:status\nfleet:no-supervisor' ]
+}
+
 @test "status: a guest without the unit shows 'no supervisor', exit 0 (D5)" {
   touch "$FLEET_FIXTURES/nosup-192.168.123.51"
   run "$FLEET" status agentvm-thinkrepos
@@ -103,8 +123,8 @@ wait_attached() {
   run "$FLEET" up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{window_panes}'
-  [ "$output" = $'overview|||4\nnixed/main|nixos|#8ec07c|1\nnixed/x|nixos|#8ec07c|1\nagent-methodology|thinkcentre|#fe8019|1' ]
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f '#{!=:#W,overview}'
+  [ "$output" = $'overview|||4\noverview2|||2\nnixed/main|nixos|#8ec07c|1\nnixed/x|nixos|#8ec07c|1\nagent-methodology|thinkcentre|#fe8019|1' ]
+  run t list-panes -s -t =fleet -F '#W|#{@fleet-repo}|#{@fleet-entry}' -f "$NOT_OV"
   [ "$output" = $'nixed/main|nixed|e-nixed-1\nnixed/x|nixed|e-nixed-stall\nagent-methodology|agent-methodology|e-am-1' ]
   run t list-panes -t =fleet:overview -F '#{@fleet-guest}'
   [ "$(grep . <<<"$output")" = $'agentvm-repos\nagentvm-thinkrepos' ]
@@ -273,7 +293,7 @@ set_branch() { jq --arg e "$2" --arg b "$3" 'map(if .entry == $e then .branch = 
   [ "$output" = 'fleet: synced fleet: 1 added' ]
   [ "$(t display -p -t "$wid" '#W|#{@fleet-repo}')" = 'mine|nixed' ]
   # grouped by @fleet-repo, not the name: the new session after the repo's last window
-  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,mine,nixed/x,nixed/y,agent-methodology,' ]
+  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,overview2,mine,nixed/x,nixed/y,agent-methodology,' ]
 }
 
 @test "sync: a window from before @fleet-repo, named for its repo, is tagged and named for its branch; one renamed by hand is not" {
@@ -454,7 +474,7 @@ old_window() {
   [ "$(grep -c '|nixed/[a-z]*|nixos|#8ec07c$' <<<"$output")" -eq 3 ]
   [ "$(grep -c nixed <<<"$output")" -eq 3 ]
   # the new session right after the repo's other windows
-  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,nixed/main,nixed/x,nixed/y,agent-methodology,' ]
+  [ "$(t list-windows -t =fleet -F '#W' | tr '\n' ,)" = 'overview,overview2,nixed/main,nixed/x,nixed/y,agent-methodology,' ]
   [ "$(t list-panes -t "$wid" -F '#{@fleet-entry}')" = e-nixed-1 ]
 }
 
@@ -470,12 +490,12 @@ old_window() {
 @test "up: windows by host, then repo; a session sync adds goes right after its repo's last window" {
   add_row 192.168.122.51 '{"repo": "/workspace/abc", "worktree": "/workspace/abc", "branch": "main", "live": "alive", "state": "running", "kind": "", "entry": "e-abc-1", "continue": "dtach -a /var/tmp/agent-sessions/e-abc-1.sock -r winch"}'
   "$FLEET" up
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-entry}' -f '#{!=:#W,overview}'
+  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-entry}' -f "$NOT_OV"
   [ "$output" = $'abc/main|nixos|e-abc-1\nnixed/main|nixos|e-nixed-1\nnixed/x|nixos|e-nixed-stall\nagent-methodology|thinkcentre|e-am-1' ]
   add_row 192.168.122.51 "$NEW_ROW"
   run "$FLEET" sync -t fleet
   [ "$output" = 'fleet: synced fleet: 1 added' ]
-  run t list-panes -s -t =fleet -F '#W|#{window_panes}|#{@fleet-entry}' -f '#{!=:#W,overview}'
+  run t list-panes -s -t =fleet -F '#W|#{window_panes}|#{@fleet-entry}' -f "$NOT_OV"
   [ "$output" = $'abc/main|1|e-abc-1\nnixed/main|1|e-nixed-1\nnixed/x|1|e-nixed-stall\nnixed/y|1|e-nixed-2\nagent-methodology|1|e-am-1' ]
 }
 
@@ -498,7 +518,7 @@ old_window() {
   # The same panes, none restarted: the first session and the shell in the old window, each other one after it.
   [ "$(t list-panes -a -F '#{pane_id}' | sort)" = "$before" ]
   [ "$(t list-panes -t "$wid" -F '#{pane_id}' | tr '\n' ,)" = "$first,$shell," ]
-  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{@fleet-entry}' -f '#{!=:#W,overview}'
+  run t list-panes -s -t =fleet -F '#W|#{@fleet-host}|#{@fleet-host-colour}|#{@fleet-entry}' -f "$NOT_OV"
   [ "$output" = $'nixed/main|nixos|#8ec07c|e-nixed-1\nnixed/main|nixos|#8ec07c|\nnixed/x|nixos|#8ec07c|e-nixed-stall\nnixed/y|nixos|#8ec07c|e-nixed-2\nagent-methodology|thinkcentre|#fe8019|e-am-1' ]
   run "$FLEET" sync -t fleet
   [ "$output" = 'fleet: synced fleet, nothing to change' ]
@@ -585,7 +605,7 @@ old_window() {
   ! t list-windows -t =fleet -F '#W' | grep -qx mine
   [ "$(t show -gv @fleet-booted-fleet)" = 1 ]
   run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\nnixed/main\nnixed/x\nagent-methodology' ]
+  [ "$output" = $'overview\noverview2\nnixed/main\nnixed/x\nagent-methodology' ]
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -593,7 +613,7 @@ old_window() {
   run "$FLEET" --local up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet-nixos -F '#W'
-  [ "$output" = $'overview\nnixed/main\nnixed/x' ]
+  [ "$output" = $'overview\noverview2\nnixed/main\nnixed/x' ]
   [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
   run "$FLEET" sync -t fleet-nixos
   [ "$status" -eq 0 ]
@@ -614,14 +634,100 @@ old_window() {
   [[ "$(entries)" == *e-am-1* ]]
 }
 
+# Layout C's overview (agent-methodology #127 D20, step 0)
+OV2_REPOS=$'agentvm-repos · nixos\n  (no open items)\n  status: 4 rows'
+OV2_THINK=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      cd /workspace/agent-methodology/.claude/worktrees/impl-x-1 && /home/agentvm/.local/share/agent-methodology/gen/b80f91c6/shared/methodology next --resume /workspace/agent-methodology/.claude/worktrees/impl-x-1 --here\n  status: 1 row'
+
+@test "overview2 prints each guest's open items with continue" {
+  run "$FLEET" _overview2 --once
+  [ "$status" -eq 0 ]
+  [ "$output" = "$OV2_REPOS"$'\n\n'"$OV2_THINK" ]
+  # one ssh per guest, over the shared connection
+  [ "$(grep -c 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log")" -eq 1 ]
+  grep 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster=auto
+}
+
+@test "overview2: an item with no continue shows what it needs" {
+  sed -i '/^continue=/d' "$FLEET_FIXTURES/inbox-192.168.123.51/21"
+  run "$FLEET" _overview2 --once
+  [[ "$output" == *$'✉ #21 death impl/x-1\n      needs: The session died (state running, exit none).\n'* ]]
+}
+
+@test "overview2 says no open items" {
+  rm -r "$FLEET_FIXTURES/inbox-192.168.123.51"
+  run "$FLEET" _overview2 --once
+  [ "$status" -eq 0 ]
+  [ "$output" = "$OV2_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  (no open items)\n  status: 1 row' ]
+}
+
+@test "overview2 marks an unreachable guest, an unreachable host and a guest with no supervisor" {
+  touch "$FLEET_FIXTURES/fail-192.168.123.51"
+  run "$FLEET" _overview2 --once
+  [ "$status" -eq 0 ]
+  [ "$output" = "$OV2_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  ✗ unreachable' ]
+  rm "$FLEET_FIXTURES/fail-192.168.123.51"; touch "$FLEET_FIXTURES/fail-thinkcentre" "$FLEET_FIXTURES/nosup-192.168.122.51"
+  run "$FLEET" _overview2 --once
+  [ "$output" = $'agentvm-repos · nixos\n  (no open items)\n  status: no supervisor\n\nthinkcentre\n  ✗ unreachable' ]
+}
+
+@test "hint counts live, asking, open: deck's activity when a row has one, else live and what needs you" {
+  jq '[.[0] + {activity: "working"}, .[0] + {entry: "a2", activity: "asking"}, .[0] + {entry: "a3", activity: "idle"},
+    .[0] + {entry: "a4", activity: "quota"}]' "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x"
+  mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.123.51.json"
+  "$FLEET" up
+  run "$FLEET" hint -t fleet
+  [ "$(plain <<<"$output")" = "nixos ●2 ◆2  thinkcentre ●3 ◆1 ✉1" ]
+  [[ "$output" == *"#[fg=#83a598]✉1#[default]"* ]]
+}
+
+@test "up: window overview2 after overview: its loop, and the first guest's btop to its right" {
+  "$FLEET" up
+  [ "$(t list-windows -t =fleet -F '#W' | head -2 | tr '\n' ,)" = 'overview,overview2,' ]
+  run t list-panes -t =fleet:overview2 -F '#{@fleet-overview2}|#{@fleet-res-guest}|#{pane_left}|#{pane_width}'
+  [ "${lines[0]}" = '1||0|127' ]
+  [ "${lines[1]}" = '|agentvm-repos|128|72' ]
+  [[ "$(t list-panes -t =fleet:overview2 -F '#{pane_start_command}' | head -1)" == *_overview2*fleet* ]]
+}
+
+@test "sync: a fleet from before overview2 gets it once; a loop an older fleet started is restarted" {
+  "$FLEET" up
+  t kill-window -t =fleet:overview2
+  "$FLEET" sync -t fleet
+  "$FLEET" sync -t fleet
+  [ "$(t list-windows -t =fleet -F '#W' | grep -cx overview2)" -eq 1 ]
+  [ "$(t list-windows -t =fleet -F '#W' | head -2 | tr '\n' ,)" = 'overview,overview2,' ]
+  p=$(t list-panes -t =fleet:overview2 -F '#{pane_id} #{@fleet-overview2}' | awk '$2 != "" { print $1 }')
+  t set -pu -t "$p" @fleet-overview2
+  old=$(t display -p -t "$p" '#{pane_pid}')
+  "$FLEET" sync -t fleet
+  [ "$(t display -p -t "$p" '#{pane_pid}')" != "$old" ]
+  [ "$(t display -p -t "$p" '#{@fleet-overview2}')" = 1 ]
+}
+
+@test "deck: with agent-deck there, window deck comes first, on up and on a sync of an older fleet; none without it" {
+  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
+  "$FLEET" up
+  ! t list-windows -t =fleet -F '#W' | grep -qx deck
+  mkdir -p "${FLEET_DECK_CMD%/*}"
+  printf '#!/bin/sh\nexec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
+  "$FLEET" sync -t fleet
+  "$FLEET" sync -t fleet
+  [ "$(t list-windows -t =fleet -F '#W' | head -3 | tr '\n' ,)" = 'deck,overview,overview2,' ]
+  [ "$(t list-windows -t =fleet -F '#W' | grep -cx deck)" -eq 1 ]
+  [[ "$(t display -p -t =fleet:deck '#{pane_start_command}')" == *deckbin/agent-deck* ]]
+  t kill-server
+  "$FLEET" up
+  [ "$(t list-windows -t =fleet -F '#W' | head -3 | tr '\n' ,)" = 'deck,overview,overview2,' ]
+}
+
 @test "hint: counts per host and unpaned entries (D10)" {
   "$FLEET" up
   add_row 192.168.122.51 "$NEW_ROW"
   run "$FLEET" hint -t fleet --refresh
   [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1  ↻1" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1 ✉1  ↻1" ]
   run "$FLEET" hint -t fleet
-  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●3#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default]  #[fg=#928374]↻1#[default]" ]
+  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●3#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default] #[fg=#83a598]✉1#[default]  #[fg=#928374]↻1#[default]" ]
 }
 
 @test "hint: an unreachable host shows ✗; no cache prints nothing (D10)" {
@@ -643,7 +749,7 @@ old_window() {
   [[ "$(entries)" == *e-nixed-2* ]]
   [ "$(t list-panes -t =mine -F x | wc -l)" -eq 1 ]
   run "$FLEET" hint -t mine
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1" ]
+  [ "$(plain <<<"$output")" = "nixos ●3 ◆2  thinkcentre ●1 ✉1" ]
 }
 
 @test "hint: a foreign session under --local falls back to fleet-<host>, not fleet (D6, D10)" {
@@ -685,7 +791,7 @@ old_window() {
 @test "ssh: probes and discovery share a connection; attach panes don't" {
   "$FLEET" up
   wait_attached e-nixed-1
-  grep -q "ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m -o BatchMode=yes .* agentvm@192.168.122.51 bash -s -- json" "$FLEET_FIXTURES/ssh.log"
+  grep -q "ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m -o BatchMode=yes .* agentvm@192.168.122.51 bash -s -- inbox-json" "$FLEET_FIXTURES/ssh.log"
   grep -q "ControlMaster=auto .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
   ! grep 'dtach -a' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
   [ "$(stat -c %a "$FLEET_STATE/ssh")" = 700 ]
@@ -711,7 +817,7 @@ old_window() {
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up
   wait_attached e-nixed-1
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- json' "$FLEET_FIXTURES/ssh.log"
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log"
   grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 dtach -a' "$FLEET_FIXTURES/ssh.log"
   ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
 }

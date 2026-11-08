@@ -20,6 +20,17 @@ case $cmd in
     if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor
     elif [ "$cmd" = 'bash -s -- json' ]; then cat "$fx/guest-$dest.json"
     else echo "table of $dest"; fi ;;
+  'bash -s -- inbox-json')
+    # what the probe script's inbox-json mode prints: the guest's inbox items not closed, a line per key, then
+    # status.sh's JSON (or the no-supervisor marker)
+    cat >/dev/null
+    [ ! -e "$fx/hang-$dest" ] || exec sleep 600
+    echo fleet:inbox
+    for f in "$fx/inbox-$dest"/[0-9]*; do
+      [ -f "$f" ] && ! grep -qx state=closed "$f" && sed "s/^/${f##*/}\t/" "$f"
+    done
+    echo fleet:status
+    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor; else cat "$fx/guest-$dest.json"; fi ;;
   'dtach -a '*)
     [ ! -e "$fx/attach-lost" ] || exit 255
     [ -e "$fx/attach-exits" ] && exit 0; exec sleep 600 ;;
