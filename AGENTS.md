@@ -30,7 +30,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 |---|---|
 | [`README.md`](README.md) | you change a package or how it is installed, or touch tmux or `fleet`: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts |
 | [`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`](docs/superpowers/specs/2026-11-05-tmux-fleet-design.md) | you change `fleet` or the tmux config: its decisions D1–D15 and clarifications |
-| [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need `fleet`'s global constraints (pane options, hint format, ssh options) or how its tests were built |
+| [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need how `fleet`'s first layout and its tests were built (history: the spec wins where they differ) |
 
 ## Keep each session small
 
@@ -270,8 +270,8 @@ tmux server (about four minutes; light enough to run without `methodology heavy`
 
 ```bash
 bats tests/              # tests/fleet.bats
-shellcheck tmux/dot-local/bin/fleet   # not clean today (SC1010, SC2015, SC2034): don't add new findings
+shellcheck tmux/dot-local/bin/fleet tests/stub/*   # clean: keep it so
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a
-`stow -R`, `prefix r` / `prefix F`, or nixed's switch for a plugin change). No heavy resource requests.
+`stow -R`, `prefix r`, running `fleet` again, or nixed's switch for a plugin change). No heavy resource requests.
