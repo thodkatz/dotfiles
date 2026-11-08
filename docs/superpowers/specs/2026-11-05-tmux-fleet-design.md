@@ -116,6 +116,9 @@ Session `fleet`, or `fleet-<host>` under `--local`.
   the host, the guest's `●N ◆M` (as the hint's) and its ip and last refresh (pane options `@fleet-guest`,
   `@fleet-guest-host`, `@fleet-guest-colour`, set by each sync, and `@fleet-summary`, set by the loop; not
   `@fleet-host`, which as a pane option would shadow the window's) (Clarification 11).
+- Layout C's windows, beside these until agent-methodology's Agent Deck adoption retires them (Clarification 19):
+  `deck`, first, when `agent-deck` is installed, running its TUI; `overview2`, after `overview`, each guest's open
+  inbox items with their `continue` and its status row count, refreshed every 30 s, the first guest's btop beside.
 - One window per attachable row, ordered by host then repo (repo is the basename of the row's `repo`), so a
   repo's windows sit side by side; a session a later sync adds opens right after that host's last window for its
   repo (a repo new to the session, at the end; a repo's windows are those whose `@fleet-repo` is it, or, made before
@@ -182,8 +185,8 @@ on its own is narrower, the hint loop's following of hops in the panes there are
 
 A background loop started with the session (`run-shell -b`, one per server, a pid file guards it) runs
 discovery every 20 s and writes the session's `hint` (state directory above), removing it when the session ends.
-`status-right` runs `fleet hint`, which only `cat`s that file, and only while its session exists. Format, in tmux styles: one `<host> ●N ◆M` group per host (the host in its tab colour, `◆M` left out at 0,
-`<host> ✗` when unreachable), two spaces between, then `↻K` when attachable entries have no pane.
+`status-right` runs `fleet hint`, which only `cat`s that file, and only while its session exists. Format, in tmux styles: one `<host> ●N ◆M ✉I` group per host (the host in its tab colour, `◆M` left out at 0,
+`✉I` the guests' open inbox items, blue, left out at 0, Clarification 19; `<host> ✗` when unreachable), two spaces between, then `↻K` when attachable entries have no pane.
 
 Each tick (`fleet _tick`) also follows hops in the panes there are, in place, under the sync's lock (`flock -n`:
 while a sync holds it, the tick follows nothing and that sync does), discovery staying outside it so a `prefix F`
@@ -410,3 +413,9 @@ pane's successor.
    Clarification 10 dropped `·` from tabs, and `<host>·<repo>` is the old name the migration renames. With the name
    no longer the repo, a window carries `@fleet-repo`, which groups a repo's windows, and `@fleet-name`, the name
    fleet gave it, so one a person renamed is left alone. Rewritten in decision 6, *Layout* and *Sync* step 2.
+19. **Layout C's overview and hint** (decisions 6, 10) — `folded`. agent-methodology's Agent Deck adoption (its
+   #127, D20; slice 0, dotfiles PR #6) adds layout C beside fleet's own windows: window `deck` (Agent Deck's TUI,
+   the guests as its remotes) and `overview2` (each guest's open inbox items, read from the item files, which carry
+   `continue`, unlike INBOX.md's lines). Discovery's probe reads the inbox in the same ssh (mode `inbox-json`), so
+   the hint gains `✉I` per host from it; live and asking come from a row's `activity` once status.sh reports deck's,
+   the old rules until then. Rewritten in *Layout* and *Hint*; decision 10's check is unchanged.
