@@ -16,6 +16,9 @@ start reads this section; keep it short.
   hop did; a no-op `--attach` means `FOLLOW_ARGS=()`); the look with both guests; the hint's counts against `methodology status`; whether deck's rows show
   `am-unattended` — from PR #7's rulings; waits on the user: a `git pull`, `stow -R tmux agent-deck` and `fleet` on the
   laptop.
+- thinkcentre's deck window: after nixed PR #27 (`change/host-agent-deck`) merges and is switched, `fleet --local
+  doctor` passes and `fleet --local` from outside tmux shows the deck window — from dotfiles PR #8; waits on the user:
+  nixed #27 merged and switched, a `git pull` in thinkcentre's `~/repos/dotfiles`.
 
 ## Unscheduled
 

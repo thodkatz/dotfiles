@@ -147,6 +147,11 @@ wait_log() {
   t new-window -d -t =fleet: -n mine 'sleep 600'
   "$FLEET" up
   t list-windows -t =fleet -F '#W' | grep -qx mine
+  # a deck window closed later (TUI quit, a deck open elsewhere) is not rebuilt
+  t kill-window -t =fleet:deck
+  "$FLEET" up
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'overview\nmine' ]
 }
 
 @test "up: window overview runs its loop, the first guest's btop to its right" {
@@ -377,7 +382,12 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [ "$status" -eq 0 ]
   echo 0.9.0 > "$FLEET_FIXTURES/deck-version"
   run "$FLEET" doctor
+  [ "$status" -eq 1 ]
   [[ "$output" == *"pinned v"*"run $ROOT/agent-deck/dot-local/bin/agent-deck-install"* ]]
+  # no pin to read: a failure, not a silent ok
+  FLEET_DECK_INSTALL=/nonexistent run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  agent-deck v0.9.0: no pin, /nonexistent unreadable"* ]]
 }
 
 @test "doctor: a failed guest ssh shows ssh's own reason (D14)" {

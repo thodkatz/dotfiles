@@ -398,8 +398,8 @@ hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 
 # The session: window deck (when deck is installed) running its TUI, then window overview, its loop (_overview) and
 # the first guest's btop to its right. A session another layout built, or resurrect restored, is rebuilt; so is one
-# built without the deck window once deck is installed, and the hint loop an older fleet left running is stopped.
-# Without deck it says so: the session is then the overview alone.
+# built without deck (@fleet-nodeck) once deck is installed, and the hint loop an older fleet left running is stopped.
+# Without deck it says so: the session is then the overview alone. A deck window closed later is not rebuilt.
 cmd_up() {
   local s pid first deck pidf p
   s=$(default_session)
@@ -407,7 +407,7 @@ cmd_up() {
     # The marker lives as long as the server: a session without it was
     # restored by resurrect into a new server, untagged, so rebuild it.
     if [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = "$LAYOUT" ]; then
-      ! deck_here || tmx list-windows -t "=$s" -F '#{@fleet-deck}' | grep -qx 1 && return 0
+      [ "$(tmx show -t "=$s:" -v @fleet-nodeck 2>/dev/null)" = 1 ] && deck_here || return 0
     fi
     tmx kill-session -t "=$s"
   fi
@@ -432,6 +432,7 @@ cmd_up() {
       || die "could not start tmux session $s"
   fi
   tmx set -p -t "$pid" @fleet-overview 1
+  deck_here || tmx set -t "=$s:" @fleet-nodeck 1
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" "$LAYOUT"
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
@@ -477,7 +478,8 @@ cmd_doctor() {
     bad "$deck not on PATH, so no deck window: install it with $(deck_install)"
   else
     v=$("$deck" --version 2>/dev/null); pin=$(deck_pin)
-    if [ -n "$pin" ] && [ "$v" != "Agent Deck v$pin" ]; then bad "$deck: ${v:-no version}, pinned v$pin: run $(deck_install)"
+    if [ -z "$pin" ]; then bad "$deck ${v#Agent Deck }: no pin, $(deck_install) unreadable"
+    elif [ "$v" != "Agent Deck v$pin" ]; then bad "$deck: ${v:-no version}, pinned v$pin: run $(deck_install)"
     else ok "$deck ${v#Agent Deck }"; fi
     if [ -r "$(deck_config)" ]; then ok "agent-deck config $(deck_config)"
     else bad "no agent-deck config $(deck_config): deck has no guests as remotes"; fi
