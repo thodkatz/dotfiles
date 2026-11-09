@@ -71,6 +71,12 @@ hosts_file() { echo "${FLEET_HOSTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/fleet
 # Agent Deck: the command (FLEET_DECK_CMD, empty for none) and its config, which names the guests as remotes.
 deck_cmd() { echo "${FLEET_DECK_CMD-agent-deck}"; }
 deck_config() { echo "${FLEET_DECK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/agent-deck/config.toml}"; }
+# Its pinned version: agent-deck-install's, in the dotfiles checkout this fleet runs from (FLEET_DECK_INSTALL for the
+# tests), as the laptop's stow and a host's home-manager both link fleet to it.
+deck_install() { echo "${FLEET_DECK_INSTALL:-${FLEET_SELF%/tmux/dot-local/bin/fleet}/agent-deck/dot-local/bin/agent-deck-install}"; }
+deck_pin() { sed -n 's/^version=//p' "$(deck_install)" 2>/dev/null | head -n 1; }
+# Deck is to run here: a command is set and on PATH.
+deck_here() { local d; d=$(deck_cmd); [ -n "$d" ] && command -v "$d" >/dev/null; }
 
 # --- discovery -----------------------------------------------------------
 
@@ -391,15 +397,18 @@ hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 # --- commands ------------------------------------------------------------
 
 # The session: window deck (when deck is installed) running its TUI, then window overview, its loop (_overview) and
-# the first guest's btop to its right. A session another layout built, or resurrect restored, is rebuilt; so is the
-# hint loop an older fleet left running stopped.
+# the first guest's btop to its right. A session another layout built, or resurrect restored, is rebuilt; so is one
+# built without deck (@fleet-nodeck) once deck is installed, and the hint loop an older fleet left running is stopped.
+# Without deck it says so: the session is then the overview alone. A deck window closed later is not rebuilt.
 cmd_up() {
   local s pid first deck pidf p
   s=$(default_session)
   if tmx has-session -t "=$s" 2>/dev/null; then
     # The marker lives as long as the server: a session without it was
     # restored by resurrect into a new server, untagged, so rebuild it.
-    [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = "$LAYOUT" ] && return 0
+    if [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = "$LAYOUT" ]; then
+      [ "$(tmx show -t "=$s:" -v @fleet-nodeck 2>/dev/null)" = 1 ] && deck_here || return 0
+    fi
     tmx kill-session -t "=$s"
   fi
   pidf=$(sdir "$s")/hintloop.pid
@@ -410,7 +419,7 @@ cmd_up() {
   echo "fleet: discovering guests..." >&2
   discover "$(sdir "$s")/fleet.json"
   deck=$(deck_cmd)
-  if [ -n "$deck" ] && command -v "$deck" >/dev/null; then
+  if deck_here; then
     # deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it looks for its sessions
     # on fleet's server, where they aren't, and fails to attach
     pid=$(tmx new-session -d -s "$s" -n deck -x 200 -y 50 -P -F '#{pane_id}' \
@@ -418,10 +427,12 @@ cmd_up() {
     tmx set -w -t "$pid" @fleet-deck 1
     pid=$(tmx new-window -d -t "=$s:" -n overview -P -F '#{pane_id}' "$(self_cmd _overview "$s")")
   else
+    [ -z "$deck" ] || echo "fleet: $deck is not on PATH, so no deck window: install it with $(deck_install), then run fleet again" >&2
     pid=$(tmx new-session -d -s "$s" -n overview -x 200 -y 50 -P -F '#{pane_id}' "$(self_cmd _overview "$s")") \
       || die "could not start tmux session $s"
   fi
   tmx set -p -t "$pid" @fleet-overview 1
+  deck_here || tmx set -t "=$s:" @fleet-nodeck 1
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" "$LAYOUT"
   first=$(jq -r '[.[] | select(.guest != "-")][0].guest // "-"' "$(sdir "$s")/fleet.json")
@@ -453,12 +464,26 @@ cmd_hint() {
 hint_cat() { tmx has-session -t "=$1" 2>/dev/null && [ -r "$(sdir "$1")/hint" ] && cat "$(sdir "$1")/hint"; }
 
 cmd_doctor() {
-  local fail=0 c dest h g ip err
+  local fail=0 c dest h g ip err deck v pin
   ok() { echo "ok    $*"; }
   bad() { echo "FAIL  $*"; fail=1; }
   for c in tmux jq ssh; do
     if command -v "$c" >/dev/null; then ok "$c"; else bad "$c not on PATH"; fi
   done
+  # Deck on this machine: the deck window's TUI, at the pinned version, with the config naming the guests
+  deck=$(deck_cmd)
+  if [ -z "$deck" ]; then
+    ok "agent-deck: off (FLEET_DECK_CMD empty)"
+  elif ! deck_here; then
+    bad "$deck not on PATH, so no deck window: install it with $(deck_install)"
+  else
+    v=$("$deck" --version 2>/dev/null); pin=$(deck_pin)
+    if [ -z "$pin" ]; then bad "$deck ${v#Agent Deck }: no pin, $(deck_install) unreadable"
+    elif [ "$v" != "Agent Deck v$pin" ]; then bad "$deck: ${v:-no version}, pinned v$pin: run $(deck_install)"
+    else ok "$deck ${v#Agent Deck }"; fi
+    if [ -r "$(deck_config)" ]; then ok "agent-deck config $(deck_config)"
+    else bad "no agent-deck config $(deck_config): deck has no guests as remotes"; fi
+  fi
   if [ "$LOCAL" = 0 ]; then
     if [ -r "$(hosts_file)" ]; then
       while read -r dest; do

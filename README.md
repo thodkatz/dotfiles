@@ -71,6 +71,8 @@ agent-deck-install                    # once, and again after a pin bump
 # Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
 cd ~/repos/dotfiles && git pull
 # a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux: prefix r
+# agent-deck and its config: from nixed's change/host-agent-deck (nixed PR #27), its switch links the config and runs
+# agent-deck-install (home-manager), as stow and the line above do here
 ```
 
 `prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
@@ -111,14 +113,16 @@ Host 192.168.123.*
 CONF
 ```
 
-Then `fleet doctor`, which names the first thing missing (a guest ssh that fails shows ssh's own reason). Guest ssh
+Then `fleet doctor`, which names the first thing missing: this machine's `agent-deck` (on PATH, at
+`agent-deck-install`'s pin, with its config), each host's and guest's ssh (a guest ssh that fails shows ssh's own
+reason). Guest ssh
 always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>` too. On a host,
 `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by itself.
 
 | | |
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. When the session you watched hands off (its successor's `prev` names it, and deck marked it viewed), the overview's next round opens the successor in the TUI, if the TUI is back on its list. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
+| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none; without it `fleet` says so and builds the overview alone, and the next `fleet` once it is installed rebuilds the session with it; a deck window you close stays closed until the session is rebuilt): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. When the session you watched hands off (its successor's `prev` names it, and deck marked it viewed), the overview's next round opens the successor in the TUI, if the TUI is back on its list. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
 | overview window | each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs), then its status rows: `<branch> <mode> <activity> [kind] [gated #n]`; to its right the first guest's resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
 | status bar `nixos ●3 ◆1 ✉1` | per host, in its colour: `●` live sessions (deck's activity working, idle or asking), `◆` asking, `✉` open inbox items (`◆` and `✉` left out at 0); `✗`: host unreachable. Rewritten by the overview's loop |
 | `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
