@@ -20,13 +20,19 @@ The `git` package includes `dot-config/git/ignore`, which Git treats as the defa
 excludes file, so patterns there (currently `.agentvm.yml`) are ignored in every repo without
 touching any project's own `.gitignore`.
 
-`agent-deck` holds [Agent Deck](https://github.com/asheshgoplani/agent-deck)'s config
-(`~/.config/agent-deck/config.toml`: self-updates off, each agentvm guest a `[remotes.<name>]`) and
+`agent-deck` holds [Agent Deck](https://github.com/asheshgoplani/agent-deck)'s config in two files, in
+`~/.config/agent-deck/`: `settings.toml`, the settings every machine shares (self-updates off, …), and
+`remotes.toml`, the laptop's guests, one `[remotes.<name>]` each (a NixOS host gets its own from nixed instead).
+Deck reads neither: `agent-deck-config` builds its `config.toml` from them, and `fleet` runs it each time, before the
+deck window starts, so edit `settings.toml` or `remotes.toml` in dotfiles, then run `fleet` (a running TUI reloads the
+file). Each key of `settings.toml` wins; what deck writes itself (its settings screen, `launch`) is kept unless
+`settings.toml` names it; `remotes.toml` replaces every remote, so a guest you remove goes. The package also holds
 `agent-deck-install`, which installs the pinned release (v1.16.38, its tarball's sha256 checked) into
 `~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop. Each guest needs the
 same version, which deck runs over ssh: installed there by hand (the same URL and sha256) until agent-methodology
-pins it for guests. Deck's own writes (`remote add`, its settings screen) replace
-the stowed link with a copy: edit the file in dotfiles instead, then `stow -R agent-deck`.
+pins it for guests. A `[hotkeys] switch_session` key (unbound in v1.16.38) works only on sessions on the machine
+the TUI runs on: attached to a guest's session, only Ctrl+Q is caught, every other key goes to the guest
+(`docs/knowledge/agent-deck-in-tmux.md`).
 
 ## tmux
 
@@ -66,14 +72,16 @@ After pulling changes to `tmux/` (e.g. the gruvbox theme, which dropped catppucc
 # Laptop
 cd ~/repos/dotfiles && git pull
 mkdir -p ~/.config/agent-deck && stow -t "$HOME" --dotfiles -R tmux agent-deck   # links any new file; edits to linked ones are live already
+# once, from PR #11: the restow drops the old config.toml link; the next `fleet` writes a config.toml file in its place
 agent-deck-install                    # once, and again after a pin bump
 # in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
 
 # Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
 cd ~/repos/dotfiles && git pull
 # a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux: prefix r
-# agent-deck and its config: from nixed's change/host-agent-deck (nixed PR #27), its switch links the config and runs
-# agent-deck-install (home-manager), as stow and the line above do here
+# agent-deck: nixed's switch runs agent-deck-install (home-manager), as stow and the line above do here. Its config:
+# nixed links settings.toml and writes the host's remotes.toml (from nixed's change/agent-deck-config-runtime), and
+# fleet builds config.toml from them; until that switch, fleet warns and deck keeps the config.toml it has
 ```
 
 `prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
@@ -89,8 +97,8 @@ guests only). Inside: window `deck` lists and attaches the sessions, window `ove
 ### fleet: every agent session in one tmux session
 
 `fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet` with two windows (layout C, agent-methodology's
-D20): window `deck` runs Agent Deck's TUI, each microVM guest one of its remotes (`agent-deck/dot-config/agent-deck/
-config.toml`), where you list the agent sessions and attach one; window `overview` shows each guest's open inbox
+D20): window `deck` runs Agent Deck's TUI, each microVM guest one of its remotes (`remotes.toml`, in
+the `agent-deck` package above), where you list the agent sessions and attach one; window `overview` shows each guest's open inbox
 items and supervisor rows, refreshed every 30 s, with the first guest's resources to its right. The hosts are in
 `~/.config/fleet/hosts` (one ssh destination per line, from this package). On a host itself, `fleet --local` shows
 that host's guests in `fleet-<host>`.
@@ -115,7 +123,7 @@ CONF
 ```
 
 Then `fleet doctor`, which names the first thing missing: this machine's `agent-deck` (on PATH, at
-`agent-deck-install`'s pin, with its config), each host's and guest's ssh (a guest ssh that fails shows ssh's own
+`agent-deck-install`'s pin, with `settings.toml`, `remotes.toml` and a `config.toml` up to date with them), each host's and guest's ssh (a guest ssh that fails shows ssh's own
 reason), and each guest's ssh as the deck window makes it (`deck ssh`). Guest ssh
 always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>` too. On a host,
 fleet's own guest ssh (`fleet --local`) uses that host's `~/.agentvm/keys/id_ed25519` by itself; the deck window's

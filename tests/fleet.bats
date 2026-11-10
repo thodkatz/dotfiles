@@ -531,10 +531,21 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAIL  agent-deck: Agent Deck v0.9.0, pinned v1.0.0: run $FLEET_DECK_INSTALL"* ]]
   echo 1.0.0 > "$FLEET_FIXTURES/deck-version"
-  rm "$FLEET_FIXTURES/deck-config.toml"
+  # deck's config: out of date with its two sources, or missing; and the sources missing
+  echo '  auto_update = true' >> "$FLEET_DECK_CONFIG"
   run "$FLEET" doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  no agent-deck config $FLEET_DECK_CONFIG: deck has no guests as remotes"* ]]
+  gen=$ROOT/agent-deck/dot-local/bin/agent-deck-config
+  [[ "$output" == *"FAIL  $FLEET_DECK_CONFIG is out of date with settings.toml and remotes.toml: run fleet, or $gen"* ]]
+  rm "$FLEET_DECK_CONFIG"
+  run "$FLEET" doctor
+  [[ "$output" == *"FAIL  no $FLEET_DECK_CONFIG: run fleet, or $gen"* ]]
+  rm "$FLEET_FIXTURES/remotes.toml"
+  run "$FLEET" doctor
+  [[ "$output" == *"FAIL  no $FLEET_FIXTURES/remotes.toml: deck has no guests as remotes (README)"* ]]
+  rm "$FLEET_FIXTURES/settings.toml"
+  run "$FLEET" doctor
+  [[ "$output" == *"FAIL  no agent-deck settings $FLEET_FIXTURES/settings.toml (the agent-deck package's, README)"* ]]
   # FLEET_DECK_CMD empty: no deck wanted, nothing to check
   FLEET_DECK_CMD='' run "$FLEET" doctor
   [ "$status" -eq 0 ]
