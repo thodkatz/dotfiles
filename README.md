@@ -33,7 +33,8 @@ the stowed link with a copy: edit the file in dotfiles instead, then `stow -R ag
 `tmux/` is the one tmux config for this laptop and the NixOS hosts: nixed links each host's
 `~/.config/tmux/tmux.conf` to its own checkout of this repo (`~/repos/dotfiles`). `tmux.conf` sources
 `plugins.tmux` last; here that file loads the plugins through TPM, on the hosts nixed generates one that loads
-them from nixpkgs. Prefix is `C-b`.
+them from nixpkgs. Prefix is `C-a` (`C-a C-a` types a literal `C-a`). In a session attached from fleet's deck
+window, `C-b` is that session's own tmux, on the guest, and Ctrl+Q goes back to deck.
 
 Laptop (Arch) setup, once:
 
