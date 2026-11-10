@@ -518,9 +518,10 @@ cmd_doctor() {
       [ -z "$err" ] || echo "      $(tail -n 1 <<<"$err")"   # ssh's own reason
       continue
     fi
-    # The deck window's own ssh to the guest: plain, as agent-deck runs it, so ~/.ssh/config alone gives the key
+    # The deck window's own ssh to the guest: plain, as agent-deck runs it, so ~/.ssh/config alone gives the key;
+    # ControlPath=none, so a master the check above left (a ControlMaster in ~/.ssh/config) can't log it in
     [ -n "$deck" ] || continue
-    if err=$(ssh "${SSH_OPTS[@]}" "$GUEST_USER@$ip" true </dev/null 2>&1 >/dev/null); then
+    if err=$(ssh "${SSH_OPTS[@]}" -o ControlPath=none "$GUEST_USER@$ip" true </dev/null 2>&1 >/dev/null); then
       ok "deck ssh $GUEST_USER@$ip ($g)"
     else
       bad "deck ssh $GUEST_USER@$ip ($g): agent-deck has no -i, so ~/.ssh/config must name the key${key:+: IdentityFile $key} (README, *Setup on a host*)"

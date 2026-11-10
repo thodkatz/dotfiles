@@ -376,7 +376,7 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [[ "$output" == *'      agentvm@192.168.122.51: Permission denied (publickey,keyboard-interactive).'* ]]
   [[ "$output" == *'ok    deck ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
   # the deck's ssh is plain: BatchMode, no -i, no accept-new
-  grep -q -- '-o BatchMode=yes -o ConnectTimeout=5 agentvm@192.168.122.51 true' "$FLEET_FIXTURES/ssh.log"
+  grep -q -- '-o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none agentvm@192.168.122.51 true' "$FLEET_FIXTURES/ssh.log"
   # no deck window, nothing of the deck's to check
   FLEET_DECK_CMD='' run "$FLEET" doctor
   [ "$status" -eq 0 ]
