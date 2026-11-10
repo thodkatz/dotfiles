@@ -41,7 +41,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 11 | Keys (prefix `C-a`, `C-a C-a` sends it, so the guest's tmux keeps `C-b`; nothing else rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (deck's own keys attach and detach) (Clarification 22) | *Plugins, keys, theme* | `tmux show -g prefix` prints `prefix C-a`; `tmux list-keys -T prefix` shows `C-a` as `send-prefix`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
 | 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
 | 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3), unless it was built without deck (`@fleet-nodeck`) and deck is now installed (Clarification 21); a deck window closed since is put back alone, first, the other windows kept (Clarification 23) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: a session built without deck gets the deck window once deck is installed, and keeps it after"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
-| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; this machine's `agent-deck`: on PATH, at `agent-deck-install`'s pin, with its config, `ok … off` when `FLEET_DECK_CMD` is empty (Clarification 21); ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>`; `"doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix"`, `"doctor: the pin is agent-deck-install's, in the checkout fleet runs from"` |
+| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; this machine's `agent-deck`: on PATH, at `agent-deck-install`'s pin, with its config, `ok … off` when `FLEET_DECK_CMD` is empty (Clarification 21); ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`, and, with a deck window, ssh to each guest as deck makes it, with no `-i` (`deck ssh`, Clarification 24)) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>`; `"doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix"`, `"doctor: the pin is agent-deck-install's, in the checkout fleet runs from"`, `"doctor: a guest only fleet's key reaches fails the deck's ssh, which reads ~/.ssh/config alone"` |
 | 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `state`, `kind`, `mode`, `activity`, `gate`, `deck_id`, `prev`; a missing field shows `?` (or `-` for activity) and never stops a round | *Contract consumed* | bats: `"overview lists both guests' open items and status rows"` (fixtures in 3a's shape), `"overview: a row missing fields shows ? and -"` |
 
 ## Early output
@@ -109,7 +109,9 @@ Guest ssh also adds `-o StrictHostKeyChecking=accept-new`, and `-i "$AGENTVM_KEY
 `--local`, `-i ~/.agentvm/keys/id_ed25519` when it exists (the host's own agentvm key); never `IdentitiesOnly`.
 On the laptop the key comes from `~/.ssh/config`: one stanza per guest subnet (`192.168.122.*` nixos,
 `192.168.123.*` thinkcentre) naming `User agentvm` and a copy of that host's key; `fleet doctor` shows ssh's own
-error for a guest it can't reach (Clarification 5).
+error for a guest it can't reach (Clarification 5). Deck's TUI makes its own ssh, plain (agent-deck's `[remotes.*]` has
+no key field), so on a host, too, `~/.ssh/config` names the agentvm key for the guest subnet: a `Match host <subnet>
+localuser theo` block, since the guests read the host's `~/.ssh/config` as well (Clarification 24).
 
 ## Layout
 
@@ -373,3 +375,10 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    and Clarification 21 had left a closed one closed, so only a session rebuilt by hand got it back. Rebuilding the
    session would wipe the user's windows, but nothing needs rebuilding: `fleet` adds the deck window alone, first,
    when deck is on PATH and no window carries `@fleet-deck`. Rewritten in decision 13, *Layout* and `README.md`.
+24. **Deck's own ssh: doctor checks it; a host's `~/.ssh/config` names the agentvm key** (decision 14) — `folded`.
+   Reported from nixos (2026-11-10): the deck window showed the `repos` guest `unreachable`, `auth failed`, while the
+   overview and `fleet --local doctor` were fine. fleet's guest ssh adds `-i ~/.agentvm/keys/id_ed25519` under
+   `--local`; agent-deck runs plain ssh and has no key setting, and nixos's `~/.ssh/config` named no key for
+   `192.168.122.*`, so its ssh offered theo's own key, which the guest refuses. Doctor now also tries each guest
+   reachable at all with fleet's `SSH_OPTS` alone, when a deck window is wanted, and names the `IdentityFile` to add;
+   `README.md`'s host setup gives the block. Rewritten in decision 14, *Discovery* and `README.md`. dotfiles PR #10.
