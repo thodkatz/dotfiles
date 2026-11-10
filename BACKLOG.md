@@ -25,7 +25,7 @@ start reads this section; keep it short.
   then `fleet --local doctor` shows `ok    deck ssh`.
 - nixed's half of the runtime deck config: `modules/home.nix` writes `remotes.toml` from `projects.nix` (the host's
   guests), links `settings.toml`, drops `agentDeckConfig`; then a `switch` on both hosts — from dotfiles PR #11 (the next
-  unit, `change/agent-deck-config-runtime` in nixed); until then a host's `fleet` warns and keeps its old config.
+  unit, `change/host-agent-deck-config` in nixed); until then a host's `fleet` warns and keeps its old config.
 - The laptop after PR #11: `git pull`, `stow -R agent-deck` (drops the `config.toml` link), `fleet`; `fleet doctor`
   shows `ok    agent-deck config` — waits on the user.
 

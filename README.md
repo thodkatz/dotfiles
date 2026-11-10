@@ -81,7 +81,7 @@ agent-deck-install                    # once, and again after a pin bump
 cd ~/repos/dotfiles && git pull
 # a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux: prefix r
 # agent-deck: nixed's switch runs agent-deck-install (home-manager), as stow and the line above do here. Its config:
-# nixed links settings.toml and writes the host's remotes.toml (from nixed's change/agent-deck-config-runtime), and
+# nixed links settings.toml and writes the host's remotes.toml (from nixed's change/host-agent-deck-config), and
 # fleet builds config.toml from them; until that switch, fleet warns and deck keeps the config.toml it has
 ```
 
