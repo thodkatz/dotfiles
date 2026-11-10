@@ -32,3 +32,7 @@ start reads this section; keep it short.
 ## Unscheduled
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
+- Agent Deck bugs seen in v1.16.38, maybe an upstream report: a detach back to a shell homes the cursor and clears
+  scrollback (`internal/tmux/pty.go`, `terminalStyleReset`'s bare `ESC[r`, PR #2964; `emitScrollbackClear`); an attach run
+  inside an attached session nests; the status bar says "ctrl+s switch" with nothing bound — from dotfiles PR #11's
+  handoff; waits on the user: whether to report them.
