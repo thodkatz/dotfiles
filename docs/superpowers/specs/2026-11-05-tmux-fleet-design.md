@@ -75,7 +75,7 @@ is running, what needs me" at a glance and whether fleet's panes are told apart 
   `tmux`, `jq` and `fzf` go in `home.packages`. `xdg.configFile."tmux/tmux.conf".source` and
   `home.file.".local/bin/fleet".source` are `config.lib.file.mkOutOfStoreSymlink "/home/theo/repos/dotfiles/…"`.
   agent-deck: home-manager links `settings.toml`, writes the host's own guests as `remotes.toml`, and runs
-  `agent-deck-install` from the checkout (nixed's `change/host-agent-deck`, Clarification 21; the two files from nixed's `change/agent-deck-config-runtime`, pending, Clarification 25).
+  `agent-deck-install` from the checkout (nixed's `change/host-agent-deck`, Clarification 21; the two files from nixed's `change/host-agent-deck-config`, pending, Clarification 25).
   `xdg.configFile."tmux/plugins.tmux".text` sets the plugins' options (continuum's restore off) and has one
   `run-shell` per plugin, from `pkgs.tmuxPlugins.{tmux-sessionx,extrakto,yank,resurrect,continuum}`
   (attribute names and each plugin's `.tmux` entry path checked against nixpkgs in the plan).
