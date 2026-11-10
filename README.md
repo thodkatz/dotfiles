@@ -116,9 +116,26 @@ CONF
 
 Then `fleet doctor`, which names the first thing missing: this machine's `agent-deck` (on PATH, at
 `agent-deck-install`'s pin, with its config), each host's and guest's ssh (a guest ssh that fails shows ssh's own
-reason). Guest ssh
+reason), and each guest's ssh as the deck window makes it (`deck ssh`). Guest ssh
 always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>` too. On a host,
 `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by itself.
+
+Setup on a host: the deck window's agent-deck runs a plain `ssh agentvm@<guest ip>` (no `-i`), so without a block in
+`~/.ssh/config` naming the agentvm key it offers your own key, the guest refuses it, and the deck shows the remote as
+unreachable (`auth failed`) while the overview, on fleet's `-i`, works. Add once, as theo, with the host's guest subnet
+(nixos `192.168.122.*`, thinkcentre `192.168.123.*`):
+
+```shell
+cat >> ~/.ssh/config <<'CONF'
+Match host 192.168.122.* localuser theo
+  User agentvm
+  IdentityFile ~/.agentvm/keys/id_ed25519
+  StrictHostKeyChecking accept-new
+CONF
+```
+
+`localuser theo` keeps it to the host: the guests read the host's `~/.ssh/config` too (at `/mnt/host-ssh`), and
+there the path doesn't exist and would hide a guest's own key. `fleet --local doctor` then shows `ok    deck ssh`.
 
 | | |
 |---|---|

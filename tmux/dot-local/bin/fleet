@@ -473,7 +473,7 @@ cmd_hint() {
 hint_cat() { tmx has-session -t "=$1" 2>/dev/null && [ -r "$(sdir "$1")/hint" ] && cat "$(sdir "$1")/hint"; }
 
 cmd_doctor() {
-  local fail=0 c dest h g ip err deck v pin
+  local fail=0 c dest h g ip err deck v pin key=
   ok() { echo "ok    $*"; }
   bad() { echo "FAIL  $*"; fail=1; }
   for c in tmux jq ssh; do
@@ -503,6 +503,8 @@ cmd_doctor() {
       bad "no hosts file $(hosts_file)"
     fi
   fi
+  # the key fleet's own guest ssh gives with -i, if any
+  for ((c = 0; c < ${#GUEST_SSH_OPTS[@]} - 1; c++)); do [ "${GUEST_SSH_OPTS[c]}" != -i ] || key=${GUEST_SSH_OPTS[c+1]}; done
   while read -r h g ip; do
     [ "$g" != - ] || continue
     if [ "$LOCAL" = 0 ]; then
@@ -514,6 +516,15 @@ cmd_doctor() {
     else
       bad "ssh $GUEST_USER@$ip ($g): no ssh, or no agent-deck there"
       [ -z "$err" ] || echo "      $(tail -n 1 <<<"$err")"   # ssh's own reason
+      continue
+    fi
+    # The deck window's own ssh to the guest: plain, as agent-deck runs it, so ~/.ssh/config alone gives the key
+    [ -n "$deck" ] || continue
+    if err=$(ssh "${SSH_OPTS[@]}" "$GUEST_USER@$ip" true </dev/null 2>&1 >/dev/null); then
+      ok "deck ssh $GUEST_USER@$ip ($g)"
+    else
+      bad "deck ssh $GUEST_USER@$ip ($g): agent-deck has no -i, so ~/.ssh/config must name the key${key:+: IdentityFile $key} (README, *Setup on a host*)"
+      [ -z "$err" ] || echo "      $(tail -n 1 <<<"$err")"
     fi
   done < <(guests)
   return "$fail"
