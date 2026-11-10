@@ -18,7 +18,11 @@ start reads this section; keep it short.
   laptop.
 - thinkcentre's deck window: after nixed PR #27 (`change/host-agent-deck`) merges and is switched, `fleet --local
   doctor` passes and `fleet --local` from outside tmux shows the deck window — from dotfiles PR #8; waits on the user:
-  nixed #27 merged and switched, a `git pull` in thinkcentre's `~/repos/dotfiles`.
+  nixed #27 merged and switched, a `git pull` in thinkcentre's `~/repos/dotfiles`, and `README.md`'s *Setup on a host*
+  block with `192.168.123.*` in thinkcentre's `~/.ssh/config` (`ok    deck ssh`).
+- nixos's deck window: its `repos` remote showed `auth failed` — from dotfiles PR #10; waits on the user: a `git pull`
+  in nixos's `~/repos/dotfiles`, `README.md`'s *Setup on a host* block (`192.168.122.*`) in nixos's `~/.ssh/config`,
+  then `fleet --local doctor` shows `ok    deck ssh`.
 
 ## Unscheduled
 
