@@ -14,7 +14,9 @@
   notify_in_cli = false
 
 # The guests, as fleet reaches them (agentvm@<ip>, over the tailnet; the key from ~/.ssh/config or the agent).
-# Each has the same pinned agent-deck in ~/.local/bin, not on a non-login ssh's PATH.
+# Each has the same pinned agent-deck in ~/.local/bin, not on a non-login ssh's PATH. These are the laptop's: on a
+# NixOS host, nixed's modules/home.nix writes the config from this file with its [remotes.*] replaced by that
+# host's own guests, so keep the host-independent settings outside [remotes.*].
 [remotes.thinkrepos]
   host = "agentvm@192.168.123.51"
   agent_deck_path = "/home/agentvm/.local/bin/agent-deck"
@@ -22,3 +24,9 @@
 [remotes.repos]
   host = "agentvm@192.168.122.51"
   agent_deck_path = "/home/agentvm/.local/bin/agent-deck"
+
+[claude]
+dangerous_mode = true
+
+[security]
+auto_trust_folders = true
