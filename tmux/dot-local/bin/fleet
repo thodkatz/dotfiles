@@ -75,6 +75,9 @@ deck_config() { echo "${FLEET_DECK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/age
 # tests), as the laptop's stow and a host's home-manager both link fleet to it.
 deck_install() { echo "${FLEET_DECK_INSTALL:-${FLEET_SELF%/tmux/dot-local/bin/fleet}/agent-deck/dot-local/bin/agent-deck-install}"; }
 deck_pin() { sed -n 's/^version=//p' "$(deck_install)" 2>/dev/null | head -n 1; }
+# The deck window's command. deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it
+# looks for its sessions on fleet's server, where they aren't, and fails to attach.
+deck_pane_cmd() { echo "env -u TMUX -u TMUX_PANE AGENT_DECK_ALLOW_OUTER_TMUX=1 $(printf %q "$(deck_cmd)")"; }
 # Deck is to run here: a command is set and on PATH.
 deck_here() { local d; d=$(deck_cmd); [ -n "$d" ] && command -v "$d" >/dev/null; }
 
@@ -399,7 +402,7 @@ hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 # The session: window deck (when deck is installed) running its TUI, then window overview, its loop (_overview) and
 # the first guest's btop to its right. A session another layout built, or resurrect restored, is rebuilt; so is one
 # built without deck (@fleet-nodeck) once deck is installed, and the hint loop an older fleet left running is stopped.
-# Without deck it says so: the session is then the overview alone. A deck window closed later is not rebuilt.
+# Without deck it says so: the session is then the overview alone. A deck window closed later is put back alone, first.
 cmd_up() {
   local s pid first deck pidf p
   s=$(default_session)
@@ -407,7 +410,15 @@ cmd_up() {
     # The marker lives as long as the server: a session without it was
     # restored by resurrect into a new server, untagged, so rebuild it.
     if [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = "$LAYOUT" ]; then
-      [ "$(tmx show -t "=$s:" -v @fleet-nodeck 2>/dev/null)" = 1 ] && deck_here || return 0
+      if ! deck_here; then return 0
+      elif [ "$(tmx show -t "=$s:" -v @fleet-nodeck 2>/dev/null)" != 1 ]; then
+        # a deck window closed since (the TUI quit, or a deck open elsewhere): put it back first, the rest kept
+        tmx list-windows -t "=$s" -F '#{@fleet-deck}' 2>/dev/null | grep -qx 1 && return 0
+        pid=$(tmx new-window -d -b -t "=$s:^" -n deck -P -F '#{pane_id}' "$(deck_pane_cmd)") \
+          || die "could not add the deck window to $s"
+        tmx set -w -t "$pid" @fleet-deck 1
+        return 0
+      fi
     fi
     tmx kill-session -t "=$s"
   fi
@@ -420,10 +431,8 @@ cmd_up() {
   discover "$(sdir "$s")/fleet.json"
   deck=$(deck_cmd)
   if deck_here; then
-    # deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it looks for its sessions
-    # on fleet's server, where they aren't, and fails to attach
-    pid=$(tmx new-session -d -s "$s" -n deck -x 200 -y 50 -P -F '#{pane_id}' \
-      "env -u TMUX -u TMUX_PANE AGENT_DECK_ALLOW_OUTER_TMUX=1 $(printf %q "$deck")") || die "could not start tmux session $s"
+    pid=$(tmx new-session -d -s "$s" -n deck -x 200 -y 50 -P -F '#{pane_id}' "$(deck_pane_cmd)") \
+      || die "could not start tmux session $s"
     tmx set -w -t "$pid" @fleet-deck 1
     pid=$(tmx new-window -d -t "=$s:" -n overview -P -F '#{pane_id}' "$(self_cmd _overview "$s")")
   else

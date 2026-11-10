@@ -40,7 +40,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 10 | The status bar shows `fleet hint` from a cache file the overview's loop rewrites every 30 s, so the bar never runs ssh: `<host> ●N ◆M ✉I` per host in tmux styles (● a row whose `activity` is working, idle or asking; ◆ asking, hidden at 0; ✉ the guests' open inbox items, hidden at 0; the host in its colour; `✗` unreachable) | *Hint* | bats: `"hint counts live, asking, open from status --json's activity"`; from the fixtures `nixos ●3 ◆1  thinkcentre ●1 ✉1` with the styles |
 | 11 | Keys (prefix `C-a`, `C-a C-a` sends it, so the guest's tmux keeps `C-b`; nothing else rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (deck's own keys attach and detach) (Clarification 22) | *Plugins, keys, theme* | `tmux show -g prefix` prints `prefix C-a`; `tmux list-keys -T prefix` shows `C-a` as `send-prefix`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
 | 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
-| 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3), unless it was built without deck (`@fleet-nodeck`) and deck is now installed (Clarification 21) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: a session built without deck gets the deck window once deck is installed, and keeps it after"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
+| 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3), unless it was built without deck (`@fleet-nodeck`) and deck is now installed (Clarification 21); a deck window closed since is put back alone, first, the other windows kept (Clarification 23) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: a session built without deck gets the deck window once deck is installed, and keeps it after"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
 | 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; this machine's `agent-deck`: on PATH, at `agent-deck-install`'s pin, with its config, `ok … off` when `FLEET_DECK_CMD` is empty (Clarification 21); ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>`; `"doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix"`, `"doctor: the pin is agent-deck-install's, in the checkout fleet runs from"` |
 | 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `state`, `kind`, `mode`, `activity`, `gate`, `deck_id`, `prev`; a missing field shows `?` (or `-` for activity) and never stops a round | *Contract consumed* | bats: `"overview lists both guests' open items and status rows"` (fixtures in 3a's shape), `"overview: a row missing fields shows ? and -"` |
 
@@ -116,7 +116,8 @@ error for a guest it can't reach (Clarification 5).
 Session `fleet`, or `fleet-<host>` under `--local`, built by `fleet` (or `fleet up`) and marked
 `@fleet-booted-<session>` = `c`; a session without that value (resurrect's, or an older fleet's per-session windows)
 is killed and rebuilt, and an older fleet's hint loop (`hintloop.pid`) stopped. So is one built without deck (session
-option `@fleet-nodeck` 1) once deck is on PATH; a deck window closed later (the TUI quit) is not rebuilt.
+option `@fleet-nodeck` 1) once deck is on PATH. A deck window closed later (the TUI quit) is put back by the next
+`fleet`, alone and first, the session's other windows kept (Clarification 23).
 
 - Window `deck`, first, when `agent-deck` (`FLEET_DECK_CMD`) is installed: its TUI, run with `TMUX` unset and
   `AGENT_DECK_ALLOW_OUTER_TMUX=1`, the guests its `[remotes.<name>]` (the laptop's deck config); window option
@@ -354,7 +355,7 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    the change in agent-methodology's spec (D20). Rewritten in the decisions named, *Layout*, *Hops*, *Hint*, the theme and *Contract
    consumed*; *Sync* is gone.
 21. **Deck on this machine: doctor checks it; a deck-less session is rebuilt once deck is installed** (decisions 6, 13,
-   14) — `folded`. Reported from thinkcentre (2026-11-08): `fleet --local` built the overview alone and `fleet --local
+   14) — `folded`; its closed deck window `superseded by 23`. Reported from thinkcentre (2026-11-08): `fleet --local` built the overview alone and `fleet --local
    doctor` passed, with agent-deck not installed on the host; nothing said so. Doctor now checks this machine's
    agent-deck (on PATH, `--version` at the pin in `agent-deck-install` of the checkout fleet runs from, its config), and
    `fleet up` says on stderr when there is no deck window. A session built without deck carries `@fleet-nodeck` and is
@@ -367,3 +368,8 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    `C-b`, so reaching the attached session took `C-b C-b` (agent-methodology's deck trial, `session-2-notes.md`), and
    agent-methodology's layout C had drawn the laptop's outer tmux with `C-a`. The outer prefix is now `C-a`, with `C-a
    C-a` sending it; the guests keep tmux's default. Rewritten in decision 11 and `README.md`'s tmux section.
+23. **A closed deck window comes back with the next `fleet`** (decision 13) — `folded`. Reported from nixos
+   (2026-11-10): `fleet --local` showed only the overview. `q` in deck's list quits the TUI, which closes its window,
+   and Clarification 21 had left a closed one closed, so only a session rebuilt by hand got it back. Rebuilding the
+   session would wipe the user's windows, but nothing needs rebuilding: `fleet` adds the deck window alone, first,
+   when deck is on PATH and no window carries `@fleet-deck`. Rewritten in decision 13, *Layout* and `README.md`.
