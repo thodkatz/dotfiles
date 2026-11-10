@@ -3,15 +3,17 @@
 # and command, and logs every call to $FLEET_FIXTURES/ssh.log.
 fx=$FLEET_FIXTURES
 echo "ssh $*" >> "$fx/ssh.log"
-G=
+G="" I=""
 while [ $# -gt 0 ]; do
-  case $1 in -o|-i) shift 2 ;; -t|-T) shift ;; -G) G=1; shift ;; *) break ;; esac
+  case $1 in -i) I=1; shift 2 ;; -o) shift 2 ;; -t|-T) shift ;; -G) G=1; shift ;; *) break ;; esac
 done
 dest=${1#*@}; shift
 # ssh -G: the config for a destination; fleet reads its hostname
 [ -z "$G" ] || { echo "user agentvm"; echo "hostname $dest"; exit 0; }
 cmd="$*"
 [ ! -e "$fx/fail-$dest" ] || { echo "ssh: connect to host $dest port 22: Connection timed out" >&2; exit 255; }
+# a guest that trusts only the agentvm key, which ~/.ssh/config doesn't name: only an ssh given -i gets in
+[ ! -e "$fx/needkey-$dest" ] || [ -n "$I" ] || { echo "agentvm@$dest: Permission denied (publickey,keyboard-interactive)." >&2; exit 255; }
 case $cmd in
   'cat /etc/agentvm/projects.json') [ ! -e "$fx/slow-$dest" ] || sleep 2; cat "$fx/projects-$dest.json" ;;
   'bash -s -- json'|'bash -s -- table')

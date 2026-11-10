@@ -352,6 +352,8 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [ "$status" -eq 1 ]
   [[ "$output" == *'FAIL  ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
   [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck'* ]]
+  # a guest no ssh reaches fails once, not again as the deck's
+  [[ "$output" != *'deck ssh agentvm@192.168.123.51'* ]]
 }
 
 @test "doctor: all good exits 0 (D14)" {
@@ -361,6 +363,24 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [[ "$output" != *FAIL* ]]
   [[ "$output" == *"ok    agent-deck v1.0.0"* ]]
   [[ "$output" == *"ok    agent-deck config $FLEET_DECK_CONFIG"* ]]
+  [[ "$output" == *'ok    deck ssh agentvm@192.168.122.51 (agentvm-repos)'* ]]
+}
+
+@test "doctor: a guest only fleet's key reaches fails the deck's ssh, which reads ~/.ssh/config alone" {
+  export FLEET_DECK_CMD=agent-deck AGENTVM_KEY=/keys/agentvm
+  touch "$FLEET_FIXTURES/needkey-192.168.122.51"
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck'* ]]
+  [[ "$output" == *'FAIL  deck ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck has no -i, so ~/.ssh/config must name the key: IdentityFile /keys/agentvm'* ]]
+  [[ "$output" == *'      agentvm@192.168.122.51: Permission denied (publickey,keyboard-interactive).'* ]]
+  [[ "$output" == *'ok    deck ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
+  # the deck's ssh is plain: BatchMode, no -i, no accept-new
+  grep -q -- '-o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none agentvm@192.168.122.51 true' "$FLEET_FIXTURES/ssh.log"
+  # no deck window, nothing of the deck's to check
+  FLEET_DECK_CMD='' run "$FLEET" doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'deck ssh'* ]]
 }
 
 @test "doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix" {
