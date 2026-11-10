@@ -26,7 +26,8 @@ touching any project's own `.gitignore`.
 Deck reads neither: `agent-deck-config` builds its `config.toml` from them, and `fleet` runs it each time, before the
 deck window starts, so edit `settings.toml` or `remotes.toml` in dotfiles, then run `fleet` (a running TUI reloads the
 file). Each key of `settings.toml` wins; what deck writes itself (its settings screen, `launch`) is kept unless
-`settings.toml` names it; `remotes.toml` replaces every remote, so a guest you remove goes. The package also holds
+`settings.toml` names it; `remotes.toml` replaces every remote, so a guest you remove goes. A key you take out of `settings.toml` stays in `config.toml`
+(it can't be told from one deck wrote): take it out there too. The package also holds
 `agent-deck-install`, which installs the pinned release (v1.16.38, its tarball's sha256 checked) into
 `~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop. Each guest needs the
 same version, which deck runs over ssh: installed there by hand (the same URL and sha256) until agent-methodology

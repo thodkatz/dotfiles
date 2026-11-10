@@ -297,6 +297,53 @@ allow_multiple = true
   [ "$(stat -c %Y "$c")" = "$(date -d 2000-01-01 +%s)" ]
 }
 
+@test "agent-deck-config: a multi-line value and each [[array]] table of deck's are kept whole" {
+  c=$FLEET_FIXTURES/config.toml
+  cat > "$c" <<'TOML'
+[claude]
+args = [
+  "--model=opus",
+  "x",
+]
+note = """
+a = b
+[not a table]
+"""
+
+[[mcp]]
+name = "a"
+
+[[mcp]]
+name = "b"
+TOML
+  gen "$c"
+  run sed -n '/^\[claude\]/,/^name = "b"/p' "$c"
+  [ "$output" = '[claude]
+dangerous_mode = true
+args = [
+  "--model=opus",
+  "x",
+]
+note = """
+a = b
+[not a table]
+"""
+
+[[mcp]]
+name = "a"
+
+[[mcp]]
+name = "b"' ]
+  run gen --check "$c"
+  [ "$status" -eq 0 ]
+}
+
+@test "agent-deck-config: the config is readable as any other (0644 under umask 022)" {
+  c=$FLEET_FIXTURES/config.toml
+  (umask 022; gen "$c")
+  [ "$(stat -c %a "$c")" = 644 ]
+}
+
 @test "agent-deck-config: no remotes.toml, no remotes; no config.toml, made from the two" {
   c=$FLEET_FIXTURES/config.toml
   stale_config "$c"
@@ -346,10 +393,14 @@ allow_multiple = true
 }
 
 @test "up: builds deck's config before the deck window starts, and again at each fleet" {
-  export FLEET_DECK_CMD=agent-deck
+  # a deck that copies the config it finds as it starts
+  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
+  mkdir -p "${FLEET_DECK_CMD%/*}"
+  printf '#!/bin/sh\ncp "%s" "$0.cfg"; exec sleep 600\n' "$FLEET_DECK_CONFIG" > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
   stale_config "$FLEET_DECK_CONFIG"
   "$FLEET" up
-  [ "$(cat "$FLEET_DECK_CONFIG")" = "$GEN_WANT" ]
+  for _ in $(seq 25); do [ -s "$FLEET_DECK_CMD.cfg" ] && break; sleep 0.2; done
+  [ "$(cat "$FLEET_DECK_CMD.cfg")" = "$GEN_WANT" ]
   printf '\n[hotkeys]\nswitch_session = "ctrl+s"\n' >> "$FLEET_FIXTURES/settings.toml"
   "$FLEET" up
   grep -qx 'switch_session = "ctrl+s"' "$FLEET_DECK_CONFIG"
