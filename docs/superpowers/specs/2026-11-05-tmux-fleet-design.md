@@ -41,7 +41,7 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 11 | Keys (prefix `C-a`, `C-a C-a` sends it, so the guest's tmux keeps `C-b`; nothing else rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (deck's own keys attach and detach) (Clarification 22) | *Plugins, keys, theme* | `tmux show -g prefix` prints `prefix C-a`; `tmux list-keys -T prefix` shows `C-a` as `send-prefix`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
 | 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
 | 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3), unless it was built without deck (`@fleet-nodeck`) and deck is now installed (Clarification 21); a deck window closed since is put back alone, first, the other windows kept (Clarification 23) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: a session built without deck gets the deck window once deck is installed, and keeps it after"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
-| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; this machine's `agent-deck`: on PATH, at `agent-deck-install`'s pin, with its config, `ok … off` when `FLEET_DECK_CMD` is empty (Clarification 21); ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`, and, with a deck window, ssh to each guest as deck makes it, with no `-i` (`deck ssh`, Clarification 24)) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>`; `"doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix"`, `"doctor: the pin is agent-deck-install's, in the checkout fleet runs from"`, `"doctor: a guest only fleet's key reaches fails the deck's ssh, which reads ~/.ssh/config alone"` |
+| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; this machine's `agent-deck`: on PATH, at `agent-deck-install`'s pin, with its `settings.toml` and `remotes.toml` and a `config.toml` up to date with them (Clarification 25), `ok … off` when `FLEET_DECK_CMD` is empty (Clarification 21); ssh to each host, the tailnet route to each guest, ssh to each guest and `agent-deck` in its `~/.local/bin`, and, with a deck window, ssh to each guest as deck makes it, with no `-i` (`deck ssh`, Clarification 24)) and names the one that fails | *Discovery* | bats: the stub refuses one guest's ssh; `fleet doctor` exits 1 and its output names that guest and `ssh agentvm@<ip>`; `"doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix"`, `"doctor: the pin is agent-deck-install's, in the checkout fleet runs from"`, `"doctor: a guest only fleet's key reaches fails the deck's ssh, which reads ~/.ssh/config alone"`, `"up: builds deck's config before the deck window starts, and again at each fleet"` and the `agent-deck-config:` cases (Clarification 25) |
 | 15 | `fleet` uses only these `status.sh --json` fields: `repo`, `worktree`, `branch`, `state`, `kind`, `mode`, `activity`, `gate`, `deck_id`, `prev`; a missing field shows `?` (or `-` for activity) and never stops a round | *Contract consumed* | bats: `"overview lists both guests' open items and status rows"` (fixtures in 3a's shape), `"overview: a row missing fields shows ? and -"` |
 
 ## Early output
@@ -61,6 +61,10 @@ is running, what needs me" at a glance and whether fleet's panes are told apart 
   `run ~/.config/tmux/plugins/tpm/tpm`.
 - `dot-local/bin/fleet`: the tool.
 - `dot-config/fleet/hosts`: one host per line, `nixos` and `thinkcentre`.
+- `agent-deck` package: `dot-config/agent-deck/settings.toml`, deck's settings, the same on every machine;
+  `dot-config/agent-deck/remotes.toml`, the laptop's guests (only the laptop stows it); `dot-local/bin/agent-deck-config`,
+  which `fleet` runs before its deck window to build `config.toml` from the two (Clarification 25);
+  `dot-local/bin/agent-deck-install`, the pinned binary.
 - `tests/fleet.bats` and `tests/fixtures/`: not stowed (outside the package).
 - `README.md`: the Arch setup: `pacman -S tmux jq fzf xclip bash-bats`, clone TPM, stow `tmux`, `tailscale up
   --accept-routes`, the guest-key `~/.ssh/config` stanzas, `fleet doctor`.
@@ -70,8 +74,8 @@ is running, what needs me" at a glance and whether fleet's panes are told apart 
 - `modules/home.nix`: `programs.tmux` goes, since it generates `tmux.conf` itself and would collide with the link;
   `tmux`, `jq` and `fzf` go in `home.packages`. `xdg.configFile."tmux/tmux.conf".source` and
   `home.file.".local/bin/fleet".source` are `config.lib.file.mkOutOfStoreSymlink "/home/theo/repos/dotfiles/…"`.
-  agent-deck: home-manager links its config and runs `agent-deck-install` from the checkout (nixed's
-  `change/host-agent-deck`, Clarification 21).
+  agent-deck: home-manager links `settings.toml`, writes the host's own guests as `remotes.toml`, and runs
+  `agent-deck-install` from the checkout (nixed's `change/host-agent-deck`, Clarification 21; the two files from nixed's `change/agent-deck-config-runtime`, pending, Clarification 25).
   `xdg.configFile."tmux/plugins.tmux".text` sets the plugins' options (continuum's restore off) and has one
   `run-shell` per plugin, from `pkgs.tmuxPlugins.{tmux-sessionx,extrakto,yank,resurrect,continuum}`
   (attribute names and each plugin's `.tmux` entry path checked against nixpkgs in the plan).
@@ -122,7 +126,7 @@ option `@fleet-nodeck` 1) once deck is on PATH. A deck window closed later (the 
 `fleet`, alone and first, the session's other windows kept (Clarification 23).
 
 - Window `deck`, first, when `agent-deck` (`FLEET_DECK_CMD`) is installed: its TUI, run with `TMUX` unset and
-  `AGENT_DECK_ALLOW_OUTER_TMUX=1`, the guests its `[remotes.<name>]` (the laptop's deck config); window option
+  `AGENT_DECK_ALLOW_OUTER_TMUX=1`, the guests its `[remotes.<name>]` (`config.toml`, built first by `agent-deck-config`, Clarification 25); window option
   `@fleet-deck` 1. Without it (`FLEET_DECK_CMD` set but not on PATH) `fleet` says so on stderr, naming
   `agent-deck-install`, and builds the overview alone.
 - Window `overview`: a loop (`@fleet-overview` 1) that every `FLEET_OVERVIEW_INTERVAL` (30 s) runs one round with
@@ -382,3 +386,15 @@ checkout's `supervise.sh`. A row missing a field is shown with `?`.
    `192.168.122.*`, so its ssh offered theo's own key, which the guest refuses. Doctor now also tries each guest
    reachable at all with fleet's `SSH_OPTS` alone, when a deck window is wanted, and names the `IdentityFile` to add;
    `README.md`'s host setup gives the block. Rewritten in decision 14, *Discovery* and `README.md`. dotfiles PR #10.
+25. **Deck's config is built at each `fleet`, from shared settings and per-machine remotes** (decision 14, *Layout*) —
+   `folded`. Asked by the user (2026-11-10, in a nixed session) after a one-line `[hotkeys]` edit needed a `nixos-rebuild
+   switch` on each host, since nixed's `home.activation.agentDeckConfig` (nixed #30) wrote the hosts' `config.toml` at
+   switch time and overwrote deck's own writes. The user's rulings: `settings.toml` is shared by every machine, never
+   varied per host; the laptop's remotes are tracked here as `remotes.toml`, the hosts' written by nixed from
+   `projects.nix`. `agent-deck-config` merges the two into `config.toml` (settings win, deck's own keys and tables kept,
+   every `[remotes.*]` remotes.toml's) and rewrites it only when it changed, since deck reloads it on its mtime; `fleet`
+   runs it before the deck window, every run, and a failure leaves the config as it is. agent-methodology's
+   `deck-config.py render` was not reused: it forces `[claude] command` and never drops a table, and it needs Python,
+   which a host's PATH may not have; nor were the TOML tools (`dasel`, `taplo`, `tomlq`, mikefarah's `yq`): none is on
+   the laptop's or the hosts' PATH, and installing one on each for a ~70-line awk merge was not worth a package. Rewritten in *Where things live*, *Layout*, decision 14 and `README.md`. dotfiles
+   PR #11.
