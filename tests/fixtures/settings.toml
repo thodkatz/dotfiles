@@ -1,0 +1,7 @@
+# The shared settings, as agent-deck/dot-config/agent-deck/settings.toml holds them.
+[updates]
+  auto_update = false
+  check_enabled = false
+
+[claude]
+dangerous_mode = true

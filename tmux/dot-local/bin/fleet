@@ -75,6 +75,8 @@ deck_config() { echo "${FLEET_DECK_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/age
 # tests), as the laptop's stow and a host's home-manager both link fleet to it.
 deck_install() { echo "${FLEET_DECK_INSTALL:-${FLEET_SELF%/tmux/dot-local/bin/fleet}/agent-deck/dot-local/bin/agent-deck-install}"; }
 deck_pin() { sed -n 's/^version=//p' "$(deck_install)" 2>/dev/null | head -n 1; }
+# What builds deck's config from settings.toml and remotes.toml beside it, in the same checkout (FLEET_DECK_GEN for the tests).
+deck_gen() { echo "${FLEET_DECK_GEN:-${FLEET_SELF%/tmux/dot-local/bin/fleet}/agent-deck/dot-local/bin/agent-deck-config}"; }
 # The deck window's command. deck won't start inside tmux without AGENT_DECK_ALLOW_OUTER_TMUX, and with TMUX set it
 # looks for its sessions on fleet's server, where they aren't, and fails to attach.
 deck_pane_cmd() { echo "env -u TMUX -u TMUX_PANE AGENT_DECK_ALLOW_OUTER_TMUX=1 $(printf %q "$(deck_cmd)")"; }
@@ -406,6 +408,9 @@ hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 cmd_up() {
   local s pid first deck pidf p
   s=$(default_session)
+  # deck's config, from the shared settings and this machine's remotes, before its window starts (a running TUI
+  # reloads it), at each fleet; a failure leaves deck the config it has
+  ! deck_here || "$(deck_gen)" "$(deck_config)" || echo "fleet: deck keeps $(deck_config) as it is" >&2
   if tmx has-session -t "=$s" 2>/dev/null; then
     # The marker lives as long as the server: a session without it was
     # restored by resurrect into a new server, untagged, so rebuild it.
@@ -490,8 +495,11 @@ cmd_doctor() {
     if [ -z "$pin" ]; then bad "$deck ${v#Agent Deck }: no pin, $(deck_install) unreadable"
     elif [ "$v" != "Agent Deck v$pin" ]; then bad "$deck: ${v:-no version}, pinned v$pin: run $(deck_install)"
     else ok "$deck ${v#Agent Deck }"; fi
-    if [ -r "$(deck_config)" ]; then ok "agent-deck config $(deck_config)"
-    else bad "no agent-deck config $(deck_config): deck has no guests as remotes"; fi
+    c=$(dirname "$(deck_config)")
+    if [ ! -r "$c/settings.toml" ]; then bad "no agent-deck settings $c/settings.toml (the agent-deck package's, README)"
+    elif [ ! -r "$c/remotes.toml" ]; then bad "no $c/remotes.toml: deck has no guests as remotes (README)"
+    elif err=$("$(deck_gen)" --check "$(deck_config)" 2>&1); then ok "agent-deck config $(deck_config)"
+    else bad "${err:-$(deck_gen) failed}: run fleet, or $(deck_gen)"; fi
   fi
   if [ "$LOCAL" = 0 ]; then
     if [ -r "$(hosts_file)" ]; then

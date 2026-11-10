@@ -168,10 +168,12 @@ Each unit's PR updates its track's line; the last slice removes it.
 ## Project in brief
 
 The user's dotfiles for an Arch laptop (i3, polybar, alacritty, zsh, nvim, doom, …) and, for tmux, the NixOS
-hosts too, managed with GNU Stow (*Working Conventions*). The one piece of code is `fleet`
+hosts too, managed with GNU Stow (*Working Conventions*). The main piece of code is `fleet`
 (`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with Agent Deck's TUI (every host's microVM guests its
 remotes) and an overview of every guest's open inbox items and status rows, reading each host's
-`/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh.
+`/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh. Beside it,
+`agent-deck/dot-local/bin/agent-deck-config` (bash and awk), which `fleet` runs to build deck's `config.toml` from the
+shared `settings.toml` and the machine's `remotes.toml`.
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
   (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; the overview's loop runs the `fleet` on disk each
@@ -272,7 +274,7 @@ tmux server (about four minutes; light enough to run without `methodology heavy`
 
 ```bash
 bats tests/              # tests/fleet.bats
-shellcheck tmux/dot-local/bin/fleet tests/stub/*   # clean: keep it so
+shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* tests/stub/*   # clean: keep it so
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a

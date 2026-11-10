@@ -1,0 +1,21 @@
+# Agent Deck (https://github.com/asheshgoplani/agent-deck): window 1 (`deck`) of fleet's session runs its TUI. Its
+# settings, the same on every machine: fleet's agent-deck-config builds ~/.config/agent-deck/config.toml from this file
+# and remotes.toml beside it (this machine's guests) each time fleet runs, so edit this one, then run fleet; a running
+# TUI picks the change up. Keys deck writes itself (its settings screen, `launch`) stay in config.toml unless this file
+# names them. The binary is pinned by agent-deck-install, so it never updates itself, here or on a remote.
+
+[updates]
+  auto_update = false
+  auto_update_remotes = false
+  auto_install = false
+  auto_restart = false
+  check_enabled = false
+  sweep_remotes = false
+  manage_timer = false
+  notify_in_cli = false
+
+[claude]
+dangerous_mode = true
+
+[security]
+auto_trust_folders = true
