@@ -147,9 +147,18 @@ wait_log() {
   t new-window -d -t =fleet: -n mine 'sleep 600'
   "$FLEET" up
   t list-windows -t =fleet -F '#W' | grep -qx mine
-  # a deck window closed later (TUI quit, a deck open elsewhere) is not rebuilt
+  # a deck window closed later (TUI quit, a deck open elsewhere) is put back first, the other windows kept
   t kill-window -t =fleet:deck
   "$FLEET" up
+  run t list-windows -t =fleet -F '#W|#{@fleet-deck}'
+  [ "$output" = $'deck|1\noverview|\nmine|' ]
+  # and only once: a deck window there is left alone
+  "$FLEET" up
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'deck\noverview\nmine' ]
+  # without deck on PATH, nothing is added
+  t kill-window -t =fleet:deck
+  FLEET_DECK_CMD=agent-deck-not-in-tests "$FLEET" up
   run t list-windows -t =fleet -F '#W'
   [ "$output" = $'overview\nmine' ]
 }
