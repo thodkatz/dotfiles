@@ -11,9 +11,9 @@ Due soon, on any track: what someone said to do "in the next session", and what 
 start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
-- The laptop try of layout C (agent-methodology's slice 3b, 3b.2 step 1 and 3b.3 step 1): does `agent-deck session
-  focus --remote <guest> <id> --attach` open a remote's session in the TUI (`follow.log` in fleet's state dir says what each
-  hop did; a no-op `--attach` means `FOLLOW_ARGS=()`); the look with both guests; the hint's counts against `methodology status`; whether deck's rows show
+- The laptop try of layout C (agent-methodology's slice 3b, 3b.2 step 1 and 3b.3 step 1): at a hop, does the TUI's attach
+  move to the successor, and after Ctrl+Q is its cursor on it (`agent-deck session focus --remote <guest> <id>`; `follow.log`
+  in fleet's state dir says what each hop did); the look with both guests; the hint's counts against `methodology status`; whether deck's rows show
   `am-unattended` — from PR #7's rulings; waits on the user: a `git pull`, `stow -R tmux agent-deck` and `fleet` on the
   laptop.
 - thinkcentre's deck window: after nixed PR #27 (`change/host-agent-deck`) merges and is switched, `fleet --local
@@ -30,6 +30,8 @@ start reads this section; keep it short.
   shows `ok    agent-deck config` — waits on the user.
 
 ## Unscheduled
+
+- fleet's cursor misses a second hop made while the moved attach is still open (d-am-1 → 2 → 3 with the TUI still attached): `follow_hops` marks the 2 → 3 hop followed, since neither `cur` nor `rec` names d-am-2; the view moves anyway (agent-methodology's end), only the cursor ends on the old row. Fix: a waiting hop's successor counts as `cur` too, with a bats case — from #12's review.
 
 <!-- - <item> — from <PR #n / review thread / spec Inputs for>, waits because <reason>. -->
 - Agent Deck bugs seen in v1.16.38, maybe an upstream report: a detach back to a shell homes the cursor and clears

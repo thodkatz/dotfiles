@@ -712,7 +712,7 @@ hops() { printf '%s\t%s\t%s\n' "$@" > "$FLEET_FIXTURES/hops-192.168.123.51"; }
 
 rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null; }
 
-@test "a viewed hop opens its successor in the TUI once" {
+@test "a viewed hop selects its successor in the TUI once" {
   deck_up
   [[ "$(cat "$FLEET_STATE/fleet/deck-attached")" == $'192.168.123.51\t'*'session attach d-am-1' ]]
   detach
