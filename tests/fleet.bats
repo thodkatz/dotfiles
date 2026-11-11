@@ -718,7 +718,7 @@ rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null;
   detach
   hops d-am-1 d-am-2 agentdeck_am_1
   rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2 --attach" ]
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
 }
 
 @test "an unviewed hop moves nothing" {
@@ -761,7 +761,7 @@ rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null;
   [ ! -e "$FLEET_FIXTURES/deck.log" ]
   detach
   rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2 --attach" ]
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
 }
 
 @test "a TUI that left its session live is not moved by its later hop" {
@@ -775,14 +775,14 @@ rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null;
   grep -q 'd-am-1' "$FLEET_STATE/fleet/hops-followed"
 }
 
-@test "a focus --attach that fails selects the successor instead" {
+@test "a focus that fails is logged, and the hop not tried again" {
   deck_up
   detach
-  touch "$FLEET_FIXTURES/deck-fail-attach"
+  touch "$FLEET_FIXTURES/deck-fail-focus"
   hops d-am-1 d-am-2 agentdeck_am_1
   rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2 --attach\nagent-deck session focus --remote thinkrepos d-am-2' ]
-  grep -q 'd-am-1: focus --remote thinkrepos d-am-2 --attach failed; selected it' "$FLEET_STATE/fleet/follow.log"
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
+  grep -q 'd-am-1: focus --remote thinkrepos d-am-2 failed' "$FLEET_STATE/fleet/follow.log"
 }
 
 @test "two hops in a row are followed in order" {
@@ -790,5 +790,5 @@ rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null;
   detach
   printf 'd-am-1\td-am-2\tagentdeck_am_1\nd-am-2\td-am-3\tagentdeck_am_2\n' > "$FLEET_FIXTURES/hops-192.168.123.51"
   rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2 --attach\nagent-deck session focus --remote thinkrepos d-am-3 --attach' ]
+  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2\nagent-deck session focus --remote thinkrepos d-am-3' ]
 }

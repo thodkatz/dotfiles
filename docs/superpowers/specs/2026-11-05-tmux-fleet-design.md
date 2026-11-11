@@ -145,9 +145,10 @@ under its process whose words include the word `attach`, its destination resolve
 the last one seen in `deck-attached`, kept while the TUI is on its list, until that session shows live (`activity`
 working, idle or asking) on its guest with nothing attached: the user left it, so its later hop isn't this TUI's. A
 hop whose old id or tmux session is in that record, on that guest, while the TUI is attached to nothing, runs
-`agent-deck session focus --remote <name> <successor> --attach` (`<name>` the remote deck's config gives that guest;
-when that fails, once more without `--attach`, the cursor on the successor), and the record moves to the
-successor, so a chain is followed in order. A hop whose old session the TUI is still attached to waits a round.
+`agent-deck session focus --remote <name> <successor>` (`<name>` the remote deck's config gives that guest), which
+puts the cursor on the successor, and the record moves to the successor, so a chain is followed in order. No
+`--attach`: since agent-methodology's agent-deck Clarification 9 the hop's end moves the TUI's attach (a client on the
+guest's tmux server) to the successor itself, and an attach on top would open it again after the person's Ctrl+Q. A hop whose old session the TUI is still attached to waits a round.
 Each hop is acted on once (`hops-followed`, the newest 200), followed or not, and each decision is a line in
 `follow.log`.
 
