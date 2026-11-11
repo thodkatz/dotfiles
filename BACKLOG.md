@@ -11,6 +11,10 @@ Due soon, on any track: what someone said to do "in the next session", and what 
 start reads this section; keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
+- The hop follow of PR #12 on each host and laptop: once agent-methodology#158 is on the guests (`methodology update`),
+  `git pull`, `stow -R tmux` and `fleet`; then a hop in a viewed session moves the TUI's attach to the successor with
+  its cursor on it, and one Ctrl+Q leaves; `claudes` from an extra window of a deck session switches that terminal —
+  from PR #12; waits on the user.
 - The laptop try of layout C (agent-methodology's slice 3b, 3b.2 step 1 and 3b.3 step 1): at a hop, does the TUI's attach
   move to the successor, and after Ctrl+Q is its cursor on it (`agent-deck session focus --remote <guest> <id>`; `follow.log`
   in fleet's state dir says what each hop did); the look with both guests; the hint's counts against `methodology status`; whether deck's rows show
