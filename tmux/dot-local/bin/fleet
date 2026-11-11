@@ -26,8 +26,6 @@ LOCAL=0
 # The layout this fleet builds, @fleet-booted-<session>'s value: `fleet` rebuilds a session another one built (an
 # older fleet's session windows) or resurrect restored (no marker).
 LAYOUT=c
-# How a followed hop moves the TUI: --attach opens the successor, as Enter on its row would (D20); none only selects it.
-FOLLOW_ARGS=(--attach)
 
 die() { echo "fleet: $*" >&2; exit 1; }
 
@@ -303,15 +301,17 @@ deck_remote() {
       if (h == ip) { print n; exit } }' "$(deck_config)" 2>/dev/null
 }
 
-# A hop is followed in the TUI that watched it (D20, the spec's Clarification 5): for each hop in $2 (a discover file)
-# not followed yet, when this fleet's deck TUI was attached to the old session (the last attach the loop saw, kept in
-# <state>/<s>/deck-attached: the old one is stopped by now, so its attach has ended) and is attached to no other
-# session now, `agent-deck session focus --remote <guest> <successor> --attach` opens the successor. A TUI on its list
+# A hop is followed in the TUI that watched it (D20, the spec's Clarifications 5 and 9): for each hop in $2 (a discover
+# file) not followed yet, when this fleet's deck TUI was attached to the old session (the last attach the loop saw, kept
+# in <state>/<s>/deck-attached) and is attached to no other session now, `agent-deck session focus --remote <guest>
+# <successor>` selects the successor. Not `--attach`: the hop's end moved the TUI's attach (a client on the guest's
+# tmux server) to the successor already, so the person is looking at it, and an attach on top would open it again after
+# their Ctrl+Q; this only puts the cursor on it once they're back on the list. A TUI on its list
 # since keeps the record (a hop is seen up to a round after it) until the recorded session shows live on its guest
 # with nothing attached: the user left it, and its later hop isn't this TUI's. A hop whose old session the TUI is
 # still attached to waits a round (its attach ending). Each hop once (<state>/<s>/hops-followed, "<ip> <old id>"),
 # whether followed or not; a chain's hops in order, the record moving to each successor. Each decision is a line in
-# <state>/<s>/follow.log; a focus that fails is tried once more without FOLLOW_ARGS (the cursor on the successor).
+# <state>/<s>/follow.log.
 follow_hops() {
   local s=$1 f=$2 d pid cur rec deck ip old new tm name more waiting='' id
   deck=$(deck_cmd)
@@ -340,10 +340,8 @@ follow_hops() {
         if [ -z "$name" ]; then
           echo "$ip $old" >> "$d/hops-followed"; echo "$(date +%T) $ip $old: no [remotes] entry for $ip, not followed" >> "$d/follow.log"; continue
         fi
-        if env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" "${FOLLOW_ARGS[@]}" </dev/null >/dev/null 2>&1; then
-          echo "$(date +%T) $ip $old: focus --remote $name $new ${FOLLOW_ARGS[*]}" >> "$d/follow.log"
-        elif [ ${#FOLLOW_ARGS[@]} -gt 0 ] && env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" </dev/null >/dev/null 2>&1; then
-          echo "$(date +%T) $ip $old: focus --remote $name $new ${FOLLOW_ARGS[*]} failed; selected it" >> "$d/follow.log"
+        if env -u TMUX -u TMUX_PANE "$deck" session focus --remote "$name" "$new" </dev/null >/dev/null 2>&1; then
+          echo "$(date +%T) $ip $old: focus --remote $name $new" >> "$d/follow.log"
         else
           echo "$(date +%T) $ip $old: focus --remote $name $new failed" >> "$d/follow.log"
         fi
