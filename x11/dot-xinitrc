@@ -8,6 +8,7 @@
 
 systemctl --user import-environment DISPLAY XAUTHORITY
 gpg-agent --daemon
+sxhkd -c ~/.config/sxhkd/media-keys &   # volume and brightness keys
 dex --autostart --environment dwm
 
 EXTERNAL=$(xrandr | grep "DP-3-1 connected")

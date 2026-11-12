@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# media-key: change volume, mic mute or brightness, then show the new level in a dunst notification.
+# Bound to the laptop's XF86 keys by ~/.config/sxhkd/media-keys (sxhkd package), started from .xinitrc.
+# Usage: media-key volume up|down|mute | mic mute | brightness up|down
+STEP=${MEDIA_KEY_STEP:-5}
+
+notify() { # notify <tag> <icon> <title> [value]
+  notify-send -a media-key -i "$2" -h "string:x-dunst-stack-tag:$1" ${4:+-h "int:value:$4"} "$3"
+}
+
+case "$1 $2" in
+  "volume up")   pactl set-sink-mute @DEFAULT_SINK@ 0; pactl set-sink-volume @DEFAULT_SINK@ "+$STEP%" ;;
+  "volume down") pactl set-sink-volume @DEFAULT_SINK@ "-$STEP%" ;;
+  "volume mute") pactl set-sink-mute @DEFAULT_SINK@ toggle ;;
+  "mic mute")    pactl set-source-mute @DEFAULT_SOURCE@ toggle ;;
+  "brightness up")   brightnessctl -q set "$STEP%+" ;;
+  "brightness down") brightnessctl -q -n1 set "$STEP%-" ;;  # -n1: never fully dark
+  *) echo "usage: media-key volume up|down|mute | mic mute | brightness up|down" >&2; exit 2 ;;
+esac
+
+case $1 in
+  volume)
+    vol=$(pactl get-sink-volume @DEFAULT_SINK@ | grep -o '[0-9]*%' | head -1 | tr -d %)
+    if pactl get-sink-mute @DEFAULT_SINK@ | grep -q yes; then
+      notify volume audio-volume-muted "Volume: muted" "$vol"
+    else
+      notify volume audio-volume-high "Volume: ${vol}%" "$vol"
+    fi ;;
+  mic)
+    if pactl get-source-mute @DEFAULT_SOURCE@ | grep -q yes; then
+      notify mic microphone-sensitivity-muted "Microphone: muted"
+    else
+      notify mic audio-input-microphone "Microphone: on"
+    fi ;;
+  brightness)
+    pct=$(( $(brightnessctl get) * 100 / $(brightnessctl max) ))
+    notify brightness display-brightness "Brightness: ${pct}%" "$pct" ;;
+esac

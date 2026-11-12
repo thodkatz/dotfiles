@@ -41,6 +41,13 @@ shown by dunst) when the battery drops to 20% and 10%, and a critical one at 5%,
 in resets it. The `systemd` package's `battery-notify.timer` runs it every minute:
 `systemctl --user enable --now battery-notify.timer` (needs `libnotify`).
 
+Volume, mic mute and brightness keys (`XF86AudioRaiseVolume`/`LowerVolume`/`Mute`/`MicMute`,
+`XF86MonBrightnessUp`/`Down`) work under any window manager: `.xinitrc` (`x11`) starts
+`sxhkd -c ~/.config/sxhkd/media-keys` (`sxhkd` package), which runs `media-key` (`scripts`). It steps by 5% and shows
+the new level in a dunst notification. It needs `sudo pacman -S sxhkd brightnessctl libpulse` (`libpulse` gives
+`pactl`, which works on PulseAudio and PipeWire); if brightness doesn't change, add yourself to the `video` group. Log in again to
+start it, or run that `sxhkd` command once now.
+
 ## tmux
 
 `tmux/` is the one tmux config for this laptop and the NixOS hosts: nixed links each host's

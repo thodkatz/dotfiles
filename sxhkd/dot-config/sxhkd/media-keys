@@ -1,0 +1,20 @@
+# Media keys only, for any window manager: .xinitrc runs `sxhkd -c ~/.config/sxhkd/media-keys`.
+# (sxhkdrc beside it is bspwm's and would grab dwm's own keys.)
+
+XF86AudioRaiseVolume
+	media-key volume up
+
+XF86AudioLowerVolume
+	media-key volume down
+
+XF86AudioMute
+	media-key volume mute
+
+XF86AudioMicMute
+	media-key mic mute
+
+XF86MonBrightnessUp
+	media-key brightness up
+
+XF86MonBrightnessDown
+	media-key brightness down
