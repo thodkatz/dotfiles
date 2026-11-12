@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# battery-notify: warn at 20% and 10%, critical at 5%, once each per discharge.
+# Run every minute by battery-notify.timer (systemd package). Charging resets it.
+SYSFS=${BATTERY_NOTIFY_SYSFS:-/sys/class/power_supply}
+STATE=${BATTERY_NOTIFY_STATE:-${XDG_RUNTIME_DIR:-/tmp}/battery-notify.level}
+
+for bat in "$SYSFS"/BAT*; do break; done
+[ -e "$bat" ] || exit 0
+cap=$(cat "$bat/capacity")
+status=$(cat "$bat/status")
+
+if [ "$status" != Discharging ]; then
+  rm -f "$STATE"
+  exit 0
+fi
+
+level=
+for t in 5 10 20; do
+  if [ "$cap" -le "$t" ]; then level=$t; break; fi
+done
+[ -n "$level" ] || { rm -f "$STATE"; exit 0; }
+
+last=$(cat "$STATE" 2>/dev/null)
+[ -n "$last" ] && [ "$level" -ge "$last" ] && exit 0
+
+if [ "$level" = 5 ]; then
+  urgency=critical title="Battery critical: ${cap}%" body="Plug in now, the laptop will shut down soon."
+else
+  urgency=normal title="Battery low: ${cap}%" body="Consider plugging in."
+fi
+# The stack tag makes dunst replace the previous battery notification instead of stacking.
+notify-send -u "$urgency" -a battery -i battery-caution \
+  -h string:x-dunst-stack-tag:battery "$title" "$body" && echo "$level" > "$STATE"
