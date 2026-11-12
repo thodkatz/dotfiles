@@ -9,7 +9,7 @@ named `dot-foo` gets symlinked as `.foo`.
 ```shell
 sudo apt install stow   # if not already installed
 mkdir -p ~/.config/agent-deck ~/.local/bin   # so stow links agent-deck's files into them, not the directories
-stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck
+stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts
 agent-deck-install      # the pinned Agent Deck (below)
 ```
 
@@ -34,6 +34,11 @@ same version, which deck runs over ssh: installed there by hand (the same URL an
 pins it for guests. A `[hotkeys] switch_session` key (unbound in v1.16.38) works only on sessions on the machine
 the TUI runs on: attached to a guest's session, only Ctrl+Q is caught, every other key goes to the guest
 (`docs/knowledge/agent-deck-in-tmux.md`).
+
+`scripts` holds standalone tools in `~/.local/bin`. `battery-notify` sends a notification (via `notify-send`,
+shown by dunst) when the battery drops to 20% and 10%, and a critical one at 5%, each once per discharge; plugging
+in resets it. The `systemd` package's `battery-notify.timer` runs it every minute:
+`systemctl --user enable --now battery-notify.timer` (needs `libnotify`).
 
 ## tmux
 
