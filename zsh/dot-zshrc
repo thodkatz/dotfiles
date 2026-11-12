@@ -130,7 +130,7 @@ alias zshcfg='vim ~/.zshrc'
 alias vimcfg='vim ~/.vimrc'
 alias nvimcfg='nvim ~/.config/nvim/init.vim'
 alias alacrittycfg='vim ~/.config/alacritty/alacritty.yml'
-alias dwmcfg='vim ~/Downloads/software/dwm/config.h'
+alias dwmcfg='vim ~/repos/personal/dwm/config.h'
 # fv stand for fzf vim
 alias fv='vim $(fzf)' 
 alias tlmgr='/usr/share/texmf-dist/scripts/texlive/tlmgr.pl --usermode'
