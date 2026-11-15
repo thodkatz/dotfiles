@@ -29,7 +29,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 
 | File | Read when |
 |---|---|
-| [`README.md`](README.md) | you change a package or how it is installed, or touch tmux or `fleet`: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts |
+| [`README.md`](README.md) | you change a package or how it is installed, or touch tmux, `fleet` or Claude Code's status line: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts, how the status line is drawn and set up |
 | [`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`](docs/superpowers/specs/2026-11-05-tmux-fleet-design.md) | you change `fleet` or the tmux config: its decisions D1–D15 and clarifications |
 | [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need how `fleet`'s first layout and its tests were built (history: the spec wins where they differ) |
 
@@ -174,6 +174,8 @@ remotes) and an overview of every guest's open inbox items and status rows, read
 `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh. Beside it,
 `agent-deck/dot-local/bin/agent-deck-config` (bash and awk), which `fleet` runs to build deck's `config.toml` from the
 shared `settings.toml` and the machine's `remotes.toml`.
+And `claude/dot-config/agent-methodology/statusline-render` (bash), which draws Claude Code's status line:
+claude-powerline's boxes plus the context budget and the inbox count (`README.md`, *Claude Code's status line*).
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
   (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; the overview's loop runs the `fleet` on disk each
@@ -273,8 +275,8 @@ the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). The tests, from 
 tmux server (about four minutes; light enough to run without `methodology heavy`):
 
 ```bash
-bats tests/              # tests/fleet.bats
-shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* tests/stub/*   # clean: keep it so
+bats tests/              # tests/fleet.bats, tests/statusline.bats
+shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* claude/dot-config/agent-methodology/statusline-render tests/stub/*   # clean: keep it so
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a

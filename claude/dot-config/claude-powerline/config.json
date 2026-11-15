@@ -1,0 +1,29 @@
+{
+  "theme": "custom",
+  "colors": {
+    "custom": {
+      "directory": { "bg": "#83a598", "fg": "#282828", "bold": true },
+      "git": { "bg": "#504945", "fg": "#ebdbb2" },
+      "model": { "bg": "#fabd2f", "fg": "#282828", "bold": true },
+      "thinking": { "bg": "#665c54", "fg": "#ebdbb2" },
+      "block": { "bg": "#504945", "fg": "#ebdbb2" },
+      "weekly": { "bg": "#3c3836", "fg": "#a89984" }
+    }
+  },
+  "display": {
+    "style": "powerline",
+    "charset": "unicode",
+    "lines": [
+      {
+        "segments": {
+          "directory": { "enabled": true, "style": "basename" },
+          "git": { "enabled": true, "showSha": false, "showAheadBehind": true },
+          "model": { "enabled": true },
+          "thinking": { "enabled": true, "showEnabled": false, "showEffort": true },
+          "block": { "enabled": true, "displayStyle": "text" },
+          "weekly": { "enabled": true, "displayStyle": "text" }
+        }
+      }
+    ]
+  }
+}
