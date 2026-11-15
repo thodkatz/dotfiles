@@ -29,7 +29,7 @@ instruction set: each rule lives in exactly one of them, so update the file that
 
 | File | Read when |
 |---|---|
-| [`README.md`](README.md) | you change a package or how it is installed, or touch tmux or `fleet`: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts |
+| [`README.md`](README.md) | you change a package or how it is installed, or touch tmux, `fleet` or Claude Code's status line: the stow commands, the tmux keys and plugins, how `fleet` is set up, run and updated on the laptop and the hosts, how the status line is drawn and set up |
 | [`docs/superpowers/specs/2026-11-05-tmux-fleet-design.md`](docs/superpowers/specs/2026-11-05-tmux-fleet-design.md) | you change `fleet` or the tmux config: its decisions D1–D15 and clarifications |
 | [`docs/superpowers/plans/2026-11-05-tmux-fleet.md`](docs/superpowers/plans/2026-11-05-tmux-fleet.md) | you need how `fleet`'s first layout and its tests were built (history: the spec wins where they differ) |
 
@@ -167,16 +167,19 @@ Each unit's PR updates its track's line; the last slice removes it.
 
 ## Project in brief
 
-The user's dotfiles for an Arch laptop (i3, polybar, alacritty, zsh, nvim, doom, …) and, for tmux, the NixOS
-hosts too, managed with GNU Stow (*Working Conventions*). The main piece of code is `fleet`
+The user's dotfiles for an Arch laptop (i3, polybar, alacritty, zsh, nvim, doom, …), for tmux the NixOS hosts too,
+and for Claude Code's status line the guests as well, managed with GNU Stow (*Working Conventions*). The main piece of code is `fleet`
 (`tmux/dot-local/bin/fleet`, bash): it builds a tmux session with Agent Deck's TUI (every host's microVM guests its
 remotes) and an overview of every guest's open inbox items and status rows, reading each host's
 `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh. Beside it,
 `agent-deck/dot-local/bin/agent-deck-config` (bash and awk), which `fleet` runs to build deck's `config.toml` from the
 shared `settings.toml` and the machine's `remotes.toml`.
+And `claude/dot-config/agent-methodology/statusline-render` (bash), which draws Claude Code's status line:
+claude-powerline's boxes plus the context budget and the inbox count (`README.md`, *Claude Code's status line*).
 
 - **Nothing here is deployed by a merge.** The laptop and each host apply it by `git pull` in their checkout
-  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file; the overview's loop runs the `fleet` on disk each
+  (`~/repos/dotfiles`), plus `stow -R <package>` for a new file (a guest has no stow: it links the status line's
+  renderer from its checkout, `README.md`, *Claude Code's status line*); the overview's loop runs the `fleet` on disk each
   round, so a pull reaches a running session with no restart (`README.md`, *Update and run*).
 - **A session in a guest can't reach the laptop or the hosts' tmux**: test `fleet` with the bats suite, which
   stubs ssh, systemctl, ip and agent-deck (`tests/stub`) and answers from `tests/fixtures`, never a real host.
@@ -270,12 +273,12 @@ PR is needed. Don't record what the code or history already shows.
 ## Setup
 
 Nothing to install in a nixed-microvm guest: `tmux`, `bats`, `shellcheck`, `jq` and `dtach` are on its PATH (on
-the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). The tests, from the repo root, each on a private
+the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). The tests, from the repo root, `fleet`'s each on a private
 tmux server (about four minutes; light enough to run without `methodology heavy`):
 
 ```bash
-bats tests/              # tests/fleet.bats
-shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* tests/stub/*   # clean: keep it so
+bats tests/              # tests/fleet.bats, tests/statusline.bats
+shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* claude/dot-config/agent-methodology/statusline-render tests/stub/*   # clean: keep it so
 ```
 
 After a merge nothing rebuilds here; the PR body says what the user runs on the laptop and the hosts (a pull, a

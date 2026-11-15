@@ -8,9 +8,10 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo apt install stow   # if not already installed
-mkdir -p ~/.config/agent-deck ~/.local/bin   # so stow links agent-deck's files into them, not the directories
-stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts
+mkdir -p ~/.config/agent-deck ~/.config/agent-methodology ~/.local/bin   # so stow links files into them, not the directories
+stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts claude
 agent-deck-install      # the pinned Agent Deck (below)
+npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status line's boxes (below); needs npm (Arch: `sudo pacman -S npm`)
 ```
 
 (run from the repo root; `-R` restows, so it's safe to rerun after editing a package or to
@@ -183,6 +184,41 @@ sudo stow -t /etc --dotfiles -R xorg-conf
 
 The touchpad config is `X11/xorg.conf.d/99-touchpad.conf` (it used to be `70-touchpad.conf`;
 if that old symlink is still in `/etc/X11/xorg.conf.d/`, delete it). Restart X to apply it.
+
+## Claude Code's status line
+
+The `claude` package draws Claude Code's status line in powerline style, gruvbox like alacritty and tmux:
+
+```
+ dotfiles  ⎇ master ✓  ✱ Fable 5.2  ✦ high  ◱ 31% (1h 59m)  ◑ 12% (3d 11h)  ctx ██░░░░░░░░ 42k/150k  inbox 2
+```
+
+Directory, git branch and its state (`✓` clean, `●` changes), model, effort level, the 5-hour and weekly usage with the time to each reset, then the
+context against the session's budget (green, yellow from 80%, red with `HAND OFF` from 100%) and the inbox's count of
+items not closed (only over 0). The first six are [claude-powerline](https://github.com/Owloops/claude-powerline)'s,
+set in `~/.config/claude-powerline/config.json` (which boxes, their order and colours); the last two are drawn by
+`~/.config/agent-methodology/statusline-render`, which runs claude-powerline and joins its own boxes onto the end.
+Alacritty draws the arrow between boxes itself, so no special font is needed. On a terminal too narrow for the line,
+claude-powerline wraps its boxes onto a second line, and ours follow the last.
+
+agent-methodology's `statusline.sh` runs the renderer when it is there (the machine's managed settings pin the status
+line, so a `statusLine` in your own settings does nothing): it needs an agent-methodology with the renderer hook
+(agent-methodology#177; `methodology update`). Without claude-powerline or its config, or when it fails, the line is
+the plain one.
+
+Set up, per machine where Claude Code runs. The laptop: the two lines in *Install* (the `claude` package, the pinned
+claude-powerline). A nixed guest has no stow, so link the renderer from the guest's checkout of dotfiles (it finds
+the config beside itself in the checkout):
+
+```shell
+mkdir -p ~/.config/agent-methodology
+ln -sfn /workspace/dotfiles/claude/dot-config/agent-methodology/statusline-render ~/.config/agent-methodology/
+npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # into ~/.local/bin; no dependencies
+```
+
+A change to the config or the renderer shows at the line's next refresh. To bump claude-powerline, try the new
+version first (`bats tests/statusline.bats` uses a stub, so also run the renderer by hand): the join relies on how it
+closes its line, and a line that closes another way gets our boxes after a gap.
 
 ## Code
 
