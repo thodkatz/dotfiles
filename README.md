@@ -192,6 +192,23 @@ sudo stow -t /etc --dotfiles -R xorg-conf
 The touchpad config is `X11/xorg.conf.d/99-touchpad.conf` (it used to be `70-touchpad.conf`;
 if that old symlink is still in `/etc/X11/xorg.conf.d/`, delete it). Restart X to apply it.
 
+### tlp (edge case)
+
+`tlp` targets `/etc` too: [TLP](https://linrunner.de/tlp/)'s power saving, plus charge thresholds for the
+ThinkPad's battery (`tlp.d/01-battery.conf`: charge from below 75% up to 80%, so the battery doesn't sit at
+100% on the charger). TLP conflicts with `power-profiles-daemon`, so that one is masked:
+
+```shell
+sudo pacman -S tlp
+sudo systemctl mask --now power-profiles-daemon.service   # skip if it isn't installed
+sudo stow -t /etc --dotfiles -R tlp
+sudo systemctl enable --now tlp.service
+sudo tlp-stat -b   # check: charge_control_start/end_threshold = 75/80
+```
+
+For a full charge before a trip, `sudo tlp fullcharge` (until the next boot, or `sudo tlp setcharge`).
+dwmblocks' `sb-bat` shows a plug while on the charger but not charging.
+
 ## Claude Code's status line
 
 The `claude` package draws Claude Code's status line in powerline style, gruvbox like alacritty and tmux:
