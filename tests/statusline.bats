@@ -10,7 +10,7 @@ setup() {
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.local/bin/claude-powerline
   mkdir -p "$HOME"
   export AGENT_SL_PLAIN="[Fable 5.2] ctx 42k/150k (28%)"
-  unset AGENT_SL_CTX AGENT_SL_BUDGET AGENT_SL_INBOX STATUSLINE_POWERLINE_CONFIG
+  unset AGENT_SL_CTX AGENT_SL_BUDGET AGENT_SL_INBOX
   ARROW=$'\xee\x82\xb0'
 }
 
@@ -32,8 +32,17 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
   [[ $output == *$'\e[48;2;80;73;69m'* && $output != *"HAND OFF"* ]]
   AGENT_SL_CTX=120000 AGENT_SL_BUDGET=150000 run render
   [[ $output == *$'\e[48;2;250;189;47m'*"ctx ████████░░ 120k/150k "* && $output != *"HAND OFF"* ]]
+  AGENT_SL_CTX=149999 AGENT_SL_BUDGET=150000 run render
+  [[ $output == *$'\e[48;2;250;189;47m'*"ctx █████████░ 149k/150k "* && $output != *"HAND OFF"* ]]
+  AGENT_SL_CTX=150000 AGENT_SL_BUDGET=150000 run render   # at the budget, as statusline.sh's own line
+  [[ $output == *$'\e[48;2;251;73;52m'*"ctx ██████████ 150k/150k HAND OFF "* ]]
   AGENT_SL_CTX=156000 AGENT_SL_BUDGET=150000 run render
   [[ $output == *$'\e[48;2;251;73;52m'*"ctx ██████████ 156k/150k HAND OFF "* ]]
+}
+
+@test "a count with a leading zero is read as decimal" {
+  AGENT_SL_CTX=042000 AGENT_SL_BUDGET=150000 run render
+  [ "$(plain_text "$output")" = " weekly $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW" ]
 }
 
 @test "the inbox box shows only over 0, after the budget box" {
@@ -52,16 +61,34 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
   [ "$output" = "$expected" ]
 }
 
-@test "claude-powerline is run with the package's config" {
-  STUB_PL_ARGS=$BATS_TEST_TMPDIR/args run render
-  [ "$(cat "$BATS_TEST_TMPDIR/args")" = "--config=$ROOT/claude/dot-config/agent-methodology/../claude-powerline/config.json" ]
-  jq -e '.display.lines[0].segments | has("directory") and has("git") and has("thinking")' \
-    "$ROOT/claude/dot-config/claude-powerline/config.json"
+@test "claude-powerline is run with the package's config and Claude Code's input" {
+  STUB_PL_ARGS=$BATS_TEST_TMPDIR/args STUB_PL_STDIN=$BATS_TEST_TMPDIR/stdin run render
+  # two arguments: claude-powerline cuts --config=<path> at an = in the path
+  [ "$(cat "$BATS_TEST_TMPDIR/args")" = "--config $ROOT/claude/dot-config/agent-methodology/../claude-powerline/config.json" ]
+  [ "$(cat "$BATS_TEST_TMPDIR/stdin")" = '{"model":{"display_name":"Fable 5.2"}}' ]
+}
+
+@test "the config: our six boxes, gruvbox at every usage level, truecolor whatever the terminal says" {
+  conf=$ROOT/claude/dot-config/claude-powerline/config.json
+  jq -e '.display.lines[0].segments | keys_unsorted == ["directory", "git", "model", "thinking", "block", "weekly"]' "$conf"
+  # claude-powerline recolours the usage boxes from 50% and 80%: without these two, in its dark theme's colours
+  jq -e '.colors.custom | has("contextWarning") and has("contextCritical")' "$conf"
+  # the join needs 38;2 codes: without this, a terminal that doesn't say truecolor gets 38;5 and our boxes a gap
+  jq -e '.display.colorCompatibility == "truecolor"' "$conf"
+}
+
+@test "a config that can't be read: the plain line, not claude-powerline's defaults" {
+  mkdir -p "$BATS_TEST_TMPDIR/pkg/agent-methodology"
+  cp "$RENDER" "$BATS_TEST_TMPDIR/pkg/agent-methodology/"
+  RENDER=$BATS_TEST_TMPDIR/pkg/agent-methodology/statusline-render
+  AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 run render
+  [ "$output" = "$AGENT_SL_PLAIN" ]
 }
 
 @test "a line that ends another way gets our boxes after a space" {
   STUB_PL_OUT="dir | model" AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 run render
-  [ "$(plain_text "$output")" = "dir | model $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW" ]
+  # no arrow into our first box: there is no box before it
+  [ "$(plain_text "$output")" = "dir | model  ctx ██░░░░░░░░ 42k/150k $ARROW" ]
 }
 
 @test "a multi-line powerline keeps its lines, ours joined onto the last" {
@@ -78,6 +105,13 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
   AGENT_SL_PLAIN="" PATH=$NO_PL_PATH run render
   [ "$status" -ne 0 ]
   [ -z "$output" ]
+}
+
+@test "claude-powerline off the PATH is found in ~/.local/bin, where README's npm line puts it" {
+  mkdir -p "$HOME/.local/bin"
+  ln -s "$ROOT/tests/stub/claude-powerline" "$HOME/.local/bin/claude-powerline"
+  PATH=$NO_PL_PATH AGENT_SL_INBOX=1 run render
+  [ "$(plain_text "$output")" = " weekly $ARROW inbox 1 $ARROW" ]
 }
 
 @test "claude-powerline failing or printing nothing: the plain line" {

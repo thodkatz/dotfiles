@@ -7,12 +7,15 @@
       "model": { "bg": "#fabd2f", "fg": "#282828", "bold": true },
       "thinking": { "bg": "#665c54", "fg": "#ebdbb2" },
       "block": { "bg": "#504945", "fg": "#ebdbb2" },
-      "weekly": { "bg": "#3c3836", "fg": "#a89984" }
+      "weekly": { "bg": "#3c3836", "fg": "#a89984" },
+      "contextWarning": { "bg": "#fabd2f", "fg": "#282828" },
+      "contextCritical": { "bg": "#fb4934", "fg": "#282828" }
     }
   },
   "display": {
     "style": "powerline",
     "charset": "unicode",
+    "colorCompatibility": "truecolor",
     "lines": [
       {
         "segments": {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # claude-powerline for tests/statusline.bats: one box ("weekly", on #3c3836) closed the way the real one closes its
 # line: a reset, an arrow in the box's colour, a reset. STUB_PL_OUT prints that instead, STUB_PL_FAIL exits 1,
-# STUB_PL_ARGS names a file that gets the arguments.
-cat >/dev/null
+# STUB_PL_ARGS names a file that gets the arguments, STUB_PL_STDIN one that gets what came on stdin.
+cat > "${STUB_PL_STDIN:-/dev/null}"
 [ -n "${STUB_PL_FAIL:-}" ] && exit 1
 [ -n "${STUB_PL_ARGS:-}" ] && printf '%s\n' "$*" > "$STUB_PL_ARGS"
 if [ -n "${STUB_PL_OUT+x}" ]; then
