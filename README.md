@@ -169,7 +169,7 @@ line. Your own panes show their command and directory on their border; the focus
 is gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect
 restores your sessions, and `fleet` rebuilds its own.
 
-Tests: `sudo pacman -S bash-bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
+Tests: `sudo pacman -S bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).
 
 #### Setup on a host

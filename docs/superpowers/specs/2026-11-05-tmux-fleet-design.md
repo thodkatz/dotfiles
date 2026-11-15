@@ -66,7 +66,7 @@ is running, what needs me" at a glance and whether fleet's panes are told apart 
   which `fleet` runs before its deck window to build `config.toml` from the two (Clarification 25);
   `dot-local/bin/agent-deck-install`, the pinned binary.
 - `tests/fleet.bats` and `tests/fixtures/`: not stowed (outside the package).
-- `README.md`: the Arch setup: `pacman -S tmux jq fzf xclip bash-bats`, clone TPM, stow `tmux`, `tailscale up
+- `README.md`: the Arch setup: `pacman -S tmux jq fzf xclip bats`, clone TPM, stow `tmux`, `tailscale up
   --accept-routes`, the guest-key `~/.ssh/config` stanzas, `fleet doctor`.
 
 **nixed** (slice 3):

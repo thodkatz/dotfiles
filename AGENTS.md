@@ -274,7 +274,7 @@ PR is needed. Don't record what the code or history already shows.
 ## Setup
 
 Nothing to install in a nixed-microvm guest: `tmux`, `bats`, `shellcheck`, `jq` and `dtach` are on its PATH (on
-the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). The tests, from the repo root, `fleet`'s each on a private
+the laptop: `sudo pacman -S tmux jq fzf bats shellcheck`). The tests, from the repo root, `fleet`'s each on a private
 tmux server (about four minutes; light enough to run without `methodology heavy`):
 
 ```bash
