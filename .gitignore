@@ -3,3 +3,5 @@ tmux/dot-config/tmux/plugins/
 /.methodology
 .claude/settings.local.json
 .claude/worktrees/
+# systemctl --user enable writes these when ~/.config/systemd/user is stowed as one link (README.md)
+systemd/dot-config/systemd/user/*.wants/

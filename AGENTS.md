@@ -135,7 +135,8 @@ History apart, large documents, growth, the clarification template and the layou
   (agent-methodology's `UPDATING.md`).
 <!-- /methodology: working-conventions -->
 
-- **Stow layout.** Each top-level directory is a stow package mirroring `$HOME` (`xorg-conf` and `tlp` mirror `/etc`),
+- **Stow layout.** Each top-level directory is a stow package mirroring `$HOME` (files under `/etc` belong to
+  `manjaro-playbook`, not here),
   with `--dotfiles`: a path segment `dot-foo` is linked as `.foo`. A new file goes under its package's mirrored
   path, never at the repo root; a new package is added to `README.md`'s install command.
 - **`README.md` documents every user-facing change** (a key, a command, a setup step), in the same commit.

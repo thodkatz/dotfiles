@@ -7,8 +7,8 @@ named `dot-foo` gets symlinked as `.foo`.
 ## Install
 
 ```shell
-sudo apt install stow   # if not already installed
-mkdir -p ~/.config/agent-deck ~/.config/agent-methodology ~/.local/bin   # so stow links files into them, not the directories
+sudo pacman -S stow     # if not already installed
+mkdir -p ~/.config/agent-deck ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
 stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts claude
 agent-deck-install      # the pinned Agent Deck (below)
 npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status line's boxes (below); needs npm (Arch: `sudo pacman -S npm`)
@@ -40,6 +40,19 @@ the TUI runs on: attached to a guest's session, only Ctrl+Q is caught, every oth
 shown by dunst) when the battery drops to 20% and 10%, and a critical one at 5%, each once per discharge; plugging
 in resets it. The `systemd` package's `battery-notify.timer` runs it every minute:
 `systemctl --user enable --now battery-notify.timer` (needs `libnotify`).
+
+`~/.config/systemd/user` must be a real directory (the `mkdir -p` above), not a stow link into this repo: otherwise
+`systemctl --user enable` writes its `*.wants/` links into the checkout (they're git-ignored). To move an existing
+link out:
+
+```shell
+cd ~/repos/dotfiles
+stow -t "$HOME" --dotfiles -D systemd
+mkdir -p ~/.config/systemd/user
+mv systemd/dot-config/systemd/user/*.wants ~/.config/systemd/user/   # keeps what's enabled
+stow -t "$HOME" --dotfiles -R systemd
+systemctl --user daemon-reload
+```
 
 Volume, mic mute and brightness keys (`XF86AudioRaiseVolume`/`LowerVolume`/`Mute`/`MicMute`,
 `XF86MonBrightnessUp`/`Down`) work under any window manager: `.xinitrc` (`x11`) starts
@@ -180,34 +193,12 @@ CONF
 there the path doesn't exist and would hide a guest's own key. `IdentitiesOnly` keeps the agent's keys from using up
 the guest's tries before this one. `fleet --local doctor` then shows `ok    deck ssh`.
 
-### xorg-conf (edge case)
+### System files: manjaro-playbook
 
-`xorg-conf` is the one package that doesn't target `$HOME` — it targets `/etc`, so it needs
-root and a separate command instead of being included in the bulk install above:
-
-```shell
-sudo stow -t /etc --dotfiles -R xorg-conf
-```
-
-The touchpad config is `X11/xorg.conf.d/99-touchpad.conf` (it used to be `70-touchpad.conf`;
-if that old symlink is still in `/etc/X11/xorg.conf.d/`, delete it). Restart X to apply it.
-
-### tlp (edge case)
-
-`tlp` targets `/etc` too: [TLP](https://linrunner.de/tlp/)'s power saving, plus charge thresholds for the
-ThinkPad's battery (`tlp.d/01-battery.conf`: charge from below 75% up to 80%, so the battery doesn't sit at
-100% on the charger). TLP conflicts with `power-profiles-daemon`, so that one is masked:
-
-```shell
-sudo pacman -S tlp
-sudo systemctl mask --now power-profiles-daemon.service   # skip if it isn't installed
-sudo stow -t /etc --dotfiles -R tlp
-sudo systemctl enable --now tlp.service
-sudo tlp-stat -b   # check: charge_control_start/end_threshold = 75/80
-```
-
-For a full charge before a trip, `sudo tlp fullcharge` (until the next boot, or `sudo tlp setcharge`).
-dwmblocks' `sb-bat` shows a plug while on the charger but not charging.
+Everything here is stowed into `$HOME`, without root. Files under `/etc` (the touchpad's X config, TLP and its
+battery charge thresholds, which dwmblocks' `sb-bat` pairs with a plug icon on the charger) are provisioned by the
+`manjaro-playbook` repo instead (`./run.sh --tags touchpad,tlp`), so each file has one owner. They used to be the
+`xorg-conf` and `tlp` packages here; the playbook's copy replaces their old symlinks in `/etc`.
 
 ## Claude Code's status line
 
