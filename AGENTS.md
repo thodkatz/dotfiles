@@ -121,7 +121,7 @@ History apart, large documents, growth, the clarification template and the layou
   tasks, slices or review rounds. The one approval a full-mode track waits for is its spec, the stage the user
   attends: they write it with the agent and approve it (its PR's `approved` label, or `methodology gate approve` at
   their word in the session). Past the hard size limit the agent adds `large-slice` itself, with its why-one-unit
-  (`development-workflow.md`, *Slicing implementation*). Otherwise stop only at a gate the approved spec names, a
+  (`development-workflow.md`, *Slicing implementation*). Otherwise stop only at a gate the approved spec names, the early output's look, a
   clarification that changes the spec's intent, the floor (a step reverting the repo can't undo: spending money,
   heavy resource requests (those *Setup* lists among them), destroying VMs, infrastructure or data, publishing or
   sending, force-pushing or rewriting `main`, secrets and credentials) or a `next-session.sh` refusal. That list is closed
@@ -196,7 +196,8 @@ Pick the lightest mode that fits, and move up when the work turns out bigger:
      decision names its acceptance check. **The user approves it** (the `approved` label; in a
      session they are in, the agent adds it with `methodology gate approve`, quoting them).
   2. **Plan**: `plan/<topic>`, written by the `writing-plans` skill into `docs/superpowers/plans/`, with its
-     `## PR slices`.
+     `## PR slices`; its tasks carry contracts and checks, not code. With an *Early output*, it details the slices
+     up to it, and `plan/<topic>-2` the rest after the user's look.
   3. **Implementation**: one small PR per slice, `impl/<topic>-<n>-<slug>`, titled `… (n/N)`.
 
 The rules that bite most often:
