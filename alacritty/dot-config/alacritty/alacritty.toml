@@ -11,7 +11,7 @@ save_to_clipboard = true
 
 # JetBrains Mono (ttf-jetbrains-mono)
 [font]
-size = 16
+size = 14
 # extra space between lines, for reading prose
 offset = { x = 0, y = 4 }
 
