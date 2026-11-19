@@ -62,6 +62,20 @@ the new level in a dunst notification. It needs `sudo pacman -S sxhkd brightness
 `pactl`, which works on PulseAudio and PipeWire); if brightness doesn't change, add yourself to the `video` group. Log in again to
 start it, or run that `sxhkd` command once now.
 
+## Terminal
+
+Alacritty uses JetBrains Mono 12 (`sudo pacman -S ttf-jetbrains-mono`) with 4px extra between lines, off-white
+`#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
+Alacritty reloads `alacritty.toml` on save.
+
+For reading long output:
+
+- In Claude Code, `/config` → theme → **dark-ansi**, so it draws with alacritty's colours (set per machine, in
+  `~/.claude.json`, not here). `ctrl+o` opens the full transcript.
+- Prose reads best at 80–110 characters a line, and Claude Code wraps to the full width: on a wide screen, run it
+  in a tmux split rather than full-screen.
+- `glow` (`sudo pacman -S glow`) shows a Markdown file formatted in the terminal.
+
 ## tmux
 
 `tmux/` is the one tmux config for this laptop and the NixOS hosts: nixed links each host's

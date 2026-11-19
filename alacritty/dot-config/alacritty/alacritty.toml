@@ -12,6 +12,8 @@ save_to_clipboard = true
 # JetBrains Mono (ttf-jetbrains-mono); 12 keeps about the columns Inconsolata 14 had, as its letters are wider
 [font]
 size = 12
+# extra space between lines, for reading prose
+offset = { x = 0, y = 4 }
 
 [font.bold]
 family = "JetBrains Mono"
@@ -29,14 +31,14 @@ style = "Italic"
 family = "JetBrains Mono"
 style = "Regular"
 
-# Tokyo Night accents on near-black, with white text
+# Tokyo Night accents on near-black, with off-white text: a little short of full contrast, easier on long sessions
 [colors.primary]
-background = "#0a0a0a"
-foreground = "#f5f5f5"
+background = "#141414"
+foreground = "#e0e0e0"
 
 [colors.cursor]
-text = "#0a0a0a"
-cursor = "#f5f5f5"
+text = "#141414"
+cursor = "#e0e0e0"
 
 [colors.selection]
 text = "CellForeground"
@@ -53,7 +55,7 @@ cyan = "#7dcfff"
 white = "#d4d4d4"
 
 [colors.bright]
-black = "#5c5c5c"
+black = "#808080"   # the grey of secondary text (Claude Code, git, comments)
 red = "#ff899d"
 green = "#9fe044"
 yellow = "#faba4a"
