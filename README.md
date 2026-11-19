@@ -64,7 +64,7 @@ start it, or run that `sxhkd` command once now.
 
 ## Terminal
 
-Alacritty uses JetBrains Mono 12 (`sudo pacman -S ttf-jetbrains-mono`) with 4px extra between lines, off-white
+Alacritty uses JetBrains Mono 16 (`sudo pacman -S ttf-jetbrains-mono`) with 4px extra between lines, off-white
 `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
 Alacritty reloads `alacritty.toml` on save.
 
