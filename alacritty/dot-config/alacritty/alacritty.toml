@@ -9,23 +9,24 @@ history = 10000
 [selection]
 save_to_clipboard = true
 
+# JetBrains Mono (ttf-jetbrains-mono); 12 keeps about the columns Inconsolata 14 had, as its letters are wider
 [font]
-size = 14
+size = 12
 
 [font.bold]
-family = "Inconsolata"
+family = "JetBrains Mono"
 style = "Bold"
 
 [font.bold_italic]
-family = "Inconsolata"
+family = "JetBrains Mono"
 style = "Bold Italic"
 
 [font.italic]
-family = "Inconsolata"
+family = "JetBrains Mono"
 style = "Italic"
 
 [font.normal]
-family = "Inconsolata"
+family = "JetBrains Mono"
 style = "Regular"
 
 # Tokyo Night accents on near-black, with white text

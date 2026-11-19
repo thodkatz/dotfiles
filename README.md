@@ -8,6 +8,7 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo pacman -S stow     # if not already installed
+sudo pacman -S ttf-jetbrains-mono   # alacritty's font
 mkdir -p ~/.config/agent-deck ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
 stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts claude
 agent-deck-install      # the pinned Agent Deck (below)
