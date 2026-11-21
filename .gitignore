@@ -1,6 +1,5 @@
 # TPM clones plugins here; stow folds ~/.config/tmux into this repo
 tmux/dot-config/tmux/plugins/
-/.methodology
 .claude/settings.local.json
 .claude/worktrees/
 # systemctl --user enable writes these when ~/.config/systemd/user is stowed as one link (README.md)

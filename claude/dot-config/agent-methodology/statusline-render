@@ -2,8 +2,8 @@
 # Claude Code's status line, drawn: claude-powerline's boxes (directory, git, model, effort, the 5-hour and weekly
 # usage: ../claude-powerline/config.json), then two of our own, joined onto its last one, which no segment of it
 # can show: the context against the session budget and the inbox count.
-# agent-methodology's statusline.sh runs this when it is executable (the managed settings pin the status line, so
-# this is the only way to restyle it): Claude Code's JSON on stdin, and in the environment what statusline.sh
+# agent-methodology's statusline.sh runs this when it is executable (agent-methodology's settings set the status line
+# to statusline.sh, so this is the way to restyle it): Claude Code's JSON on stdin, and in the environment what statusline.sh
 # computed: AGENT_SL_PLAIN (its plain line), AGENT_SL_CTX and AGENT_SL_BUDGET (tokens), AGENT_SL_INBOX (items not
 # closed). Without claude-powerline (README.md, *Claude Code's status line*), or its config, it prints the plain line.
 here=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
