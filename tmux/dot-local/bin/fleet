@@ -4,7 +4,7 @@
 # agent-deck is installed) is Agent Deck's TUI, the guests its remotes, where a session is attached; window `overview`
 # every guest's open inbox items and status rows, the first guest's btop beside. Its loop also writes the status bar's
 # hint and opens a hop's successor in the TUI that was attached to the session that handed off.
-# Design: docs/superpowers/specs/2026-11-05-tmux-fleet-design.md in dotfiles.
+# Design: docs/fleet-design.md in dotfiles.
 set -uo pipefail
 
 FLEET_SELF=$(readlink -f "${BASH_SOURCE[0]}")

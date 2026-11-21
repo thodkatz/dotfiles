@@ -5,7 +5,9 @@ Found 2026-11-15 (Claude Code 2.1.322, a nixed-microvm guest), while building th
 - **The status line is pinned by the managed settings** (`tooling-gotchas.md`, *A `statusLine` in
   `.claude/settings.local.json` does nothing under the managed settings*), so ccstatusline, claude-powerline and the
   like can't be set the way their READMEs say. The way in is the renderer `statusline.sh` runs
-  (agent-methodology#177): `claude/dot-config/agent-methodology/statusline-render`.
+  (agent-methodology#177): `claude/dot-config/agent-methodology/statusline-render`. Since 2026-11-20 there are no
+  managed settings: agent-methodology merges its `statusLine` into `~/.claude/settings.json`, and the renderer is
+  still the way in.
 - **tweakcc doesn't fit a guest**: it patches Claude Code's own files, and `claude` is in `/nix/store`, a read-only
   `erofs` mount (`findmnt -T /nix/store`). Themes and spinner verbs, its main draw, are built in now: a theme is a
   JSON file, `~/.claude/themes/<slug>.json` (`base` plus `overrides`), picked with `/theme`; `spinnerVerbs` is a

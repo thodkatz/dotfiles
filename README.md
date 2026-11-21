@@ -231,10 +231,9 @@ set in `~/.config/claude-powerline/config.json` (which boxes, their order and co
 Alacritty draws the arrow between boxes itself, so no special font is needed. On a terminal too narrow for the line,
 claude-powerline wraps its boxes onto a second line, and ours follow the last.
 
-agent-methodology's `statusline.sh` runs the renderer when it is there (the machine's managed settings pin the status
-line, so a `statusLine` in your own settings does nothing): it needs an agent-methodology with the renderer hook
-(agent-methodology#177; `methodology update`). Without claude-powerline or its config, or when it fails, the line is
-the plain one.
+agent-methodology's `statusline.sh` runs the renderer when it is there (agent-methodology's settings, merged into
+`~/.claude/settings.json`, set the status line to `statusline.sh`). Without claude-powerline or its config, or when it
+fails, the line is the plain one.
 
 Set up, per machine where Claude Code runs. The laptop: the two lines in *Install* (the `claude` package, the pinned
 claude-powerline). A nixed guest has no stow, so link the renderer from the guest's checkout of dotfiles (it finds
