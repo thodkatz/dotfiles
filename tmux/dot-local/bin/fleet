@@ -98,14 +98,20 @@ guests() {
 
 # --- the attach ----------------------------------------------------------
 
-# What a guest runs to be attached: its `agents` session gets a window `dashboard`, workmux's dashboard (started again
+# What a guest runs to be attached (a line saying so when it has no `agents` session): that session gets a window
+# `dashboard`, workmux's dashboard (started again
 # after each jump, which ends it), when it has none, swapped into the first place (window 0) when it isn't there; the
 # attach opens on it, so Enter on an agent goes to its window.
 # Not `bash -l`: NixOS's /etc/profile resets PATH; workmux is in ~/.local/bin, off a non-login ssh's PATH.
 attach_script() {
   cat <<'EOF'
+# no agents session yet: said plainly, not tmux's "no server running" or "can't find session". fleet starts none:
+# agent-methodology's launcher starts the server, with a clean environment for its panes
+if ! tmux has-session -t =agents 2>/dev/null; then
+  echo "no agents on $(hostname) yet: its tmux has no session agents (methodology next starts one)"; exit 1
+fi
 wm=$(command -v workmux || echo "$HOME/.local/bin/workmux")
-if tmux has-session -t =agents 2>/dev/null && ! tmux list-windows -t =agents -F '#W' | grep -qx dashboard; then
+if ! tmux list-windows -t =agents -F '#W' | grep -qx dashboard; then
   tmux new-window -d -t =agents: -n dashboard "while :; do $wm dashboard || sleep 5; done"
 fi
 first=$(tmux list-windows -t =agents -F '#{window_index}' 2>/dev/null | head -n 1)

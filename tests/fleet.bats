@@ -158,10 +158,15 @@ wait_log() {
 @test "attach script: the agents session gets one dashboard window, first, workmux's dashboard again after each jump" {
   export GUEST_TMUX=$BATS_TEST_TMPDIR/tt TMUX_TMPDIR=$BATS_TEST_TMPDIR/tt
   mkdir -p "$TMUX_TMPDIR"
-  # no tmux server: nothing made, the attach fails
+  # no tmux server, then one without the agents session: said plainly, nothing made
   run bash -c "'$FLEET' _attach-script | bash"
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 1 ]
+  [ "$output" = "no agents on $(hostname) yet: its tmux has no session agents (methodology next starts one)" ]
   ! tmux has-session 2>/dev/null || false
+  tmux new-session -d -s other 'sleep 600'
+  run bash -c "'$FLEET' _attach-script | bash"
+  [ "$status" -eq 1 ] && [[ "$output" == "no agents on "* ]]
+  ! tmux has-session -t =agents 2>/dev/null || false
   tmux new-session -d -s agents -n bash 'sleep 600'
   tmux new-window -d -t =agents: -n wm-a 'sleep 600'
   for _ in 1 2; do
