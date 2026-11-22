@@ -140,17 +140,16 @@ ends it.
 
 The hosts are in `~/.config/fleet/hosts` (one ssh destination per line, from this package).
 
-The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruvbox look of `tmux.conf` on tmux's own
-keys (prefix `C-b`, and agent-methodology's `C-b u` switches a session's mode), windows from 0, the mouse on (the
-dashboard takes clicks), the guest's name on the left. The tabs carry workmux's status icon: workmux copies the tab
-format into each agent window and puts its icon before the format's `#{?window_flags,,}`. Its icons are Nerd Font
-glyphs (agent-methodology's workmux config), so the terminal needs a Nerd Font: alacritty's is (*Install*). A guest
-has no stow: link it once in the guest, from its checkout of dotfiles:
+The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruvbox look on tmux's own keys (prefix
+`C-b`, and agent-methodology's `C-b u` switches a session's mode), windows from 0, the mouse on (the dashboard takes
+clicks), the host's name on a dimmed purple on the left, workmux's `wm-` drawn dim. The tabs carry workmux's status
+icon: workmux copies the tab format into each agent window and puts its icon before the format's
+`#{?window_flags,,}`. Its icons are Nerd Font glyphs (agent-methodology's workmux config), so the terminal you look
+through needs a Nerd Font: alacritty's is (*Install*); a host, with no desktop, needs none. nixed links it as each
+guest's `~/.config/tmux/tmux.conf` (nixed#45), so a guest's tmux server starts with it. A server already running
+reads it, and its open windows and the agents session take the new tab formats, with:
 
 ```shell
-mkdir -p ~/.config/tmux && ln -sfn /workspace/dotfiles/tmux/dot-config/tmux/guest.conf ~/.config/tmux/tmux.conf
-# a tmux server already running reads it now; its open windows and the agents session keep their old tab
-# formats, so take those off (the agents' windows get the icon put back in):
 tmux source-file ~/.config/tmux/tmux.conf
 tmux set -u -t agents window-status-format; tmux set -u -t agents window-status-current-format
 for o in window-status-format window-status-current-format; do
@@ -158,11 +157,6 @@ for o in window-status-format window-status-current-format; do
   for w in $(tmux list-windows -t =agents -F '#{?@workmux_token,#{window_id},}'); do tmux set -w -t "$w" "$o" "$f"; done
 done
 tmux set -u -t agents status-left   # the UNATTENDED block comes back at the next start, or C-b u
-
-Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
-hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
-let `~/.ssh/config` pick it by subnet (nixos's guests are on `192.168.122.*`, thinkcentre's on `192.168.123.*`):
-
 ```shell
 scp theo@nixos:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-nixos
 scp theo@thinkcentre:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-thinkcentre
