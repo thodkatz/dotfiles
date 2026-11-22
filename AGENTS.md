@@ -6,14 +6,12 @@ and for Claude Code's status line the guests as well, managed with GNU Stow. `RE
 
 ## The code
 
-- **`fleet`** (`tmux/dot-local/bin/fleet`, bash) builds a tmux session with Agent Deck's TUI (every host's microVM
-  guests its remotes) and an overview of every guest's open inbox items and status rows, reading each host's
-  `/etc/agentvm/projects.json` and each guest's supervisor `status.sh --json` over ssh. Its design, decisions D1–D15
+- **`fleet`** (`tmux/dot-local/bin/fleet`, bash) builds a tmux session with an overview of every guest's agent
+  sessions and a window per guest attaching its `agents` tmux session, reading each host's
+  `/etc/agentvm/projects.json` and each guest's `workmux status --all --json` over ssh. Its design, decisions D1–D15
   and clarifications: `docs/fleet-design.md`.
-- **`agent-deck/dot-local/bin/agent-deck-config`** (bash and awk), which `fleet` runs to build deck's `config.toml`
-  from the shared `settings.toml` and the machine's `remotes.toml`.
 - **`claude/dot-config/agent-methodology/statusline-render`** (bash) draws Claude Code's status line:
-  claude-powerline's boxes plus the context budget and the inbox count.
+  claude-powerline's boxes plus the context budget.
 
 ## Working here
 
@@ -34,11 +32,11 @@ and for Claude Code's status line the guests as well, managed with GNU Stow. `RE
 ## Tests
 
 A session in a guest can't reach the laptop or the hosts' tmux: `fleet` is tested by the bats suite, which stubs
-ssh, systemctl, ip and agent-deck (`tests/stub`) and answers from `tests/fixtures`. Nothing to install in a
+ssh, ip and workmux (`tests/stub`) and answers from `tests/fixtures`. Nothing to install in a
 nixed-microvm guest (on the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). From the repo root, about
 four minutes, light enough to run without `methodology heavy`:
 
 ```bash
 bats tests/              # tests/fleet.bats, tests/statusline.bats
-shellcheck tmux/dot-local/bin/fleet agent-deck/dot-local/bin/* claude/dot-config/agent-methodology/statusline-render tests/stub/*   # clean: keep it so
+shellcheck tmux/dot-local/bin/fleet claude/dot-config/agent-methodology/statusline-render tests/stub/*   # clean: keep it so
 ```

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Stub workmux for the probe script's tests: `status --all --json` is nixos's guest fixture, `status --all` a line.
+# Logs each call, with the LC_ALL it ran under, to $FLEET_FIXTURES/workmux.log; $FLEET_FIXTURES/workmux-fails makes it
+# fail as workmux does under a client without a UTF-8 locale.
+fx=$FLEET_FIXTURES
+echo "LC_ALL=${LC_ALL-} $*" >> "$fx/workmux.log"
+[ ! -e "$fx/workmux-fails" ] || { printf 'Warning: x\nError: tmux returned malformed pane information\n' >&2; exit 1; }
+case "$*" in
+  'status --all --json') cat "$fx/guest-192.168.122.51.json" ;;
+  'status --all') echo "workmux table" ;;
+  *) echo "stub workmux: unexpected: $*" >&2; exit 2 ;;
+esac

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code's status line, drawn: claude-powerline's boxes (directory, git, model, effort, the 5-hour and weekly
-# usage: ../claude-powerline/config.json), then two of our own, joined onto its last one, which no segment of it
-# can show: the context against the session budget and the inbox count.
+# usage: ../claude-powerline/config.json), then one of our own, joined onto its last one, which no segment of it
+# can show: the context against the session budget.
 # agent-methodology's statusline.sh runs this when it is executable (agent-methodology's settings set the status line
 # to statusline.sh, so this is the way to restyle it): Claude Code's JSON on stdin, and in the environment what statusline.sh
-# computed: AGENT_SL_PLAIN (its plain line), AGENT_SL_CTX and AGENT_SL_BUDGET (tokens), AGENT_SL_INBOX (items not
-# closed). Without claude-powerline (README.md, *Claude Code's status line*), or its config, it prints the plain line.
+# computed: AGENT_SL_PLAIN (its plain line), AGENT_SL_CTX and AGENT_SL_BUDGET (tokens). Without claude-powerline
+# (README.md, *Claude Code's status line*), or its config, it prints the plain line.
 here=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 input=$(cat)
 plain() { [ -n "${AGENT_SL_PLAIN:-}" ] && printf '%s\n' "$AGENT_SL_PLAIN"; exit; }
@@ -20,7 +20,7 @@ conf=$here/../claude-powerline/config.json
 pl=$("$cpl" --config "$conf" <<<"$input") && [ -n "$pl" ] || plain
 
 # Gruvbox, as alacritty.toml and tmux.conf have it.
-bg2="#504945" dark="#282828" green="#b8bb26" yellow="#fabd2f" red="#fb4934" blue="#83a598"
+bg2="#504945" dark="#282828" green="#b8bb26" yellow="#fabd2f" red="#fb4934"
 arrow=$'\xee\x82\xb0'   # U+E0B0, as bytes: \u would follow the locale
 rgb() { local h=${1#\#}; printf '%d;%d;%d' "0x${h:0:2}" "0x${h:2:2}" "0x${h:4:2}"; }
 
@@ -37,7 +37,6 @@ if [[ $ctx =~ ^[0-9]+$ && $budget =~ ^[1-9][0-9]*$ ]]; then
   elif [ "$pct" -ge 80 ];  then ours+=("$yellow" "$dark" "$text")
   else ours+=("$bg2" "$green" "$text"); fi
 fi
-[[ ${AGENT_SL_INBOX:-0} =~ ^[1-9][0-9]*$ ]] && ours+=("$blue" "$dark" "inbox $AGENT_SL_INBOX")
 [ ${#ours[@]} -eq 0 ] && { printf '%s\n' "$pl"; exit; }
 
 # claude-powerline ends its line with a reset, an arrow in its last box's colour, a reset. Drop that arrow and start

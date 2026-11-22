@@ -1,4 +1,9 @@
-[
-  {"repo": "/workspace/agent-methodology", "worktree": "/workspace/agent-methodology", "branch": "", "state": "running",
-   "kind": "", "mode": "attended", "activity": "working", "gate": "", "prev": "", "deck_id": "d-am-1"}
-]
+{
+  "context": {"backend": "tmux", "instance": "/tmp/tmux-1000/default"},
+  "agents": [
+    {"worktree": "agent-methodology", "branch": "main", "project": "agent-methodology",
+     "project_path": "/workspace/agent-methodology", "status": "working", "elapsed_secs": 59, "title": "✳ Claude Code",
+     "pane_id": "%1", "workdir": "/workspace/agent-methodology", "agent_kind": "claude", "session": "agents",
+     "window_name": "wm-agent-methodology", "updated_ts": 1795370143}
+  ]
+}
