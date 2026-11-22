@@ -152,6 +152,16 @@ wait_log() {
     [ "$output" = "fleet: no $BATS_TEST_TMPDIR/none.json: no agentvm guests on this machine; drop --local to reach the hosts in $FLEET_HOSTS_FILE" ]
   done
   ! t has-session -t =fleet-nixos 2>/dev/null
+  AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json FLEET_HOSTNAME=nixos run "$FLEET" --local attach agentvm-repos
+  [ "$output" = "fleet: no $BATS_TEST_TMPDIR/none.json: no agentvm guests on this machine; drop --local to reach the hosts in $FLEET_HOSTS_FILE" ]
+}
+
+@test "--local with no projects.json: a running session is still attached" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  "$FLEET" --local up
+  AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json run "$FLEET" --local up
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "no hosts file: said once" {

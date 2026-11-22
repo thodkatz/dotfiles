@@ -64,8 +64,8 @@ hosts_file() { echo "${FLEET_HOSTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/fleet
 
 projects_file() { echo "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json}"; }
 
-# What discovery reads is missing: why, in a line, empty when it is there. Checked by main before discovery, once:
-# guests() runs in a subshell, where a die doesn't stop fleet, and a command may call it twice.
+# What discovery reads is missing: why, in a line, empty when it is there. Checked where guests are needed, not in
+# guests(), which runs in a subshell, where a die doesn't stop fleet: a running session is attached without them.
 source_missing() {
   if [ "$LOCAL" = 1 ]; then
     [ -r "$(projects_file)" ] ||
@@ -171,6 +171,7 @@ cmd_up() {
       die "$s is from an older fleet and is rebuilt, which would end this pane: run fleet from another session, or detach first"
     tmx kill-session -t "=$s"
   fi
+  local why; why=$(source_missing); [ -z "$why" ] || die "$why"
   echo "fleet: discovering guests..." >&2
   # shellcheck disable=SC2034 # ip: the attach looks it up itself, each time
   while read -r h g ip; do
@@ -243,7 +244,7 @@ cmd_attach() {
   list=$(guests)
   if [ -n "${1:-}" ]; then
     read -r host g ip < <(awk -v g="$1" '$2 == g { print; exit }' <<<"$list")
-    [ -n "${host:-}" ] || die "no guest $1"
+    [ -n "${host:-}" ] || die "$(source_missing | grep . || echo "no guest $1")"
   elif [ "$(grep -c . <<<"$list")" = 1 ]; then
     read -r host g ip <<<"$list"
     [ "$g" != - ] || host=''   # its host down: the session, whose window attaches once it answers
@@ -282,12 +283,11 @@ main() {
   guest_ssh_opts
   local cmd=${1:-attach}
   [ $# -eq 0 ] || shift
-  case $cmd in attach|up|ls) local why; why=$(source_missing); [ -z "$why" ] || die "$why" ;; esac
   case $cmd in
     attach) cmd_attach "$@" ;;
     up) cmd_up ;;
     _attach) cmd__attach "$@" ;;
-    ls) guests ;;
+    ls) local why; why=$(source_missing); [ -z "$why" ] || die "$why"; guests ;;
     doctor) cmd_doctor ;;
     help|-h|--help) usage ;;
     _attach-script) attach_script ;;
