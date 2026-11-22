@@ -389,3 +389,11 @@ window mode on workmux, its step 5 slice 1).
    a loop, and opens on it. Tried on agentvm-repos (a grouped session and a client of a private server, so no one
    else's view moved): Enter on a row moved that client to the agent's window, and the dashboard exited, hence the
    loop. Rewritten in `README.md`, `AGENTS.md` and `fleet help`.
+30. **The guest's tmux in gruvbox; the dashboard first** (decision 12) — `folded`. The user, 2026-11-22: the dashboard
+   in window 0, and the gruvbox look on the guest's tmux, styled the way workmux allows rather than our old
+   `tmux.conf` adapted. `guest.conf` carries the palette on tmux's own keys (`C-b`: the agents', and
+   agent-methodology's `C-b u`), windows from 0 and the mouse on (the dashboard's clicks). workmux's `status_format`
+   stays on: tried on a private server, it copies the server's tab format into each agent window at its first status
+   update and puts its icon before a `#{?window_flags…}` piece (else at the end), so the format ends in an empty one.
+   Nerd Font icons and no `wm-` prefix are agent-methodology's workmux config (its #237, at the user's choice);
+   alacritty takes JetBrains Mono's Nerd Font build. The attach swaps `dashboard` into the first place.

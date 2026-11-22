@@ -155,19 +155,20 @@ wait_log() {
 
 # --- the attach: one guest from this terminal, the dashboard window ---------------
 
-@test "attach script: the agents session gets one dashboard window, workmux's dashboard again after each jump" {
+@test "attach script: the agents session gets one dashboard window, first, workmux's dashboard again after each jump" {
   export GUEST_TMUX=$BATS_TEST_TMPDIR/tt TMUX_TMPDIR=$BATS_TEST_TMPDIR/tt
   mkdir -p "$TMUX_TMPDIR"
   # no tmux server: nothing made, the attach fails
   run bash -c "'$FLEET' _attach-script | bash"
   [ "$status" -ne 0 ]
   ! tmux has-session 2>/dev/null || false
-  tmux new-session -d -s agents -n wm-a 'sleep 600'
+  tmux new-session -d -s agents -n bash 'sleep 600'
+  tmux new-window -d -t =agents: -n wm-a 'sleep 600'
   for _ in 1 2; do
-    # no terminal here, so the attach itself fails; the window is made first, once
+    # no terminal here, so the attach itself fails; the window is made first, once, and swapped into the first place
     run bash -c "'$FLEET' _attach-script | bash"
-    run tmux list-windows -t =agents -F '#W'
-    [ "$output" = $'wm-a\ndashboard' ]
+    run tmux list-windows -t =agents -F '#I #W'
+    [ "$output" = $'0 dashboard\n1 wm-a\n2 bash' ]
   done
   [[ "$(tmux display -p -t =agents:dashboard '#{pane_start_command}')" == *'while :; do '*'workmux dashboard || sleep 5; done'* ]]
 }
@@ -272,4 +273,14 @@ wait_log() {
   eval "$(cat "$BATS_TEST_TMPDIR/hook") $(printf %q "$save")"
   run cut -f 1,2 "$save"
   [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
+}
+
+@test "guest.conf: loads clean on tmux's own keys, the mouse on, windows from 0, the tabs ending in workmux's anchor" {
+  run tmux -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents 'sleep 600'
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+  [ "$(t show -gv prefix)" = C-b ]
+  [ "$(t show -gv mouse)" = on ]
+  [ "$(t show -gv base-index)" = 0 ]
+  [[ "$(t show -gv window-status-format)" == *'#{?window_flags,,} ' ]]
+  [[ "$(t show -gv window-status-current-format)" == *'#{?window_flags,,} ' ]]
 }

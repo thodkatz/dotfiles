@@ -8,7 +8,7 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo pacman -S stow     # if not already installed
-sudo pacman -S ttf-jetbrains-mono   # alacritty's font
+sudo pacman -S ttf-jetbrains-mono-nerd   # alacritty's font: JetBrains Mono with Nerd Font icons (workmux's)
 mkdir -p ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
 stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode scripts claude
 npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status line's boxes (below); needs npm (Arch: `sudo pacman -S npm`)
@@ -48,7 +48,8 @@ start it, or run that `sxhkd` command once now.
 
 ## Terminal
 
-Alacritty uses JetBrains Mono 14 (`sudo pacman -S ttf-jetbrains-mono`) with 4px extra between lines, off-white
+Alacritty uses JetBrains Mono 14, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
+Nerd Font`: the guests' workmux draws Nerd Font status icons) with 4px extra between lines, off-white
 `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
 Alacritty reloads `alacritty.toml` on save.
 
@@ -138,6 +139,25 @@ ends it.
   here the guest's tmux nests in fleet's: `C-a` is fleet's, `C-b` the guest's.
 
 The hosts are in `~/.config/fleet/hosts` (one ssh destination per line, from this package).
+
+The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruvbox look of `tmux.conf` on tmux's own
+keys (prefix `C-b`, and agent-methodology's `C-b u` switches a session's mode), windows from 0, the mouse on (the
+dashboard takes clicks), the guest's name on the left. The tabs carry workmux's status icon: workmux copies the tab
+format into each agent window and puts its icon before the format's `#{?window_flags,,}`. Its icons are Nerd Font
+glyphs (agent-methodology's workmux config), so the terminal needs a Nerd Font: alacritty's is (*Install*). A guest
+has no stow: link it once in the guest, from its checkout of dotfiles:
+
+```shell
+mkdir -p ~/.config/tmux && ln -sfn /workspace/dotfiles/tmux/dot-config/tmux/guest.conf ~/.config/tmux/tmux.conf
+# a tmux server already running reads it now; its open windows and the agents session keep their old tab
+# formats, so take those off (the agents' windows get the icon put back in):
+tmux source-file ~/.config/tmux/tmux.conf
+tmux set -u -t agents window-status-format; tmux set -u -t agents window-status-current-format
+for o in window-status-format window-status-current-format; do
+  f=$(tmux show -gv "$o" | sed 's/#{?window_flags,,}/#{?@workmux_status, #{@workmux_status},}&/')
+  for w in $(tmux list-windows -t =agents -F '#{?@workmux_token,#{window_id},}'); do tmux set -w -t "$w" "$o" "$f"; done
+done
+tmux set -u -t agents status-left   # the UNATTENDED block comes back at the next start, or C-b u
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
 hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
