@@ -35,20 +35,21 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 6 | Session `fleet` (`fleet-<host>` under `--local`): a window per guest, named after it, and no other (Clarification 28) | *Layout* | bats: `"fleet start makes a window per guest, named after it, and nothing else"` |
 | 7 | A guest's window attaches its `agents` session: `ssh -t` to `tmux -u attach -t =agents`, the guest looked up again each time, again at Enter or in 15 s; a host down at the start gets a window named after it, which attaches its guest once it answers (Clarification 28) | *Layout* | bats: `"up: a guest's window attaches its agents session over the guest's ssh, unshared"`, `"attach: after the attach ends, it says so and attaches again at Enter"`, `"attach: a host down at the start gets a window named after it, which attaches its guest once it answers"` |
 | 8 | No sync: `fleet sync` is an unknown command and `prefix F` is unbound; nothing moves on its own (the hop follow went with deck, Clarification 27) | — | bats: `"fleet sync, status and hint are unknown"` (exit 2, usage) |
-| 9 | One unreachable host or guest never fails `fleet up` or a round: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet up` exits 0, and `fleet status <failed>` prints `unreachable` |
+| 9 | One unreachable host or guest never fails `fleet up`: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, hosts in parallel; the down host still counts (a window named after it, which attaches once it answers), and a guest's window that can't attach says so and tries again (Clarification 28) | *Discovery* | bats: `"ls: an unreachable host is one '- -' line, not a failure (D9)"`, `"attach: a host down at the start gets a window named after it, which attaches its guest once it answers"`, `"attach: a host that is down still counts, so two hosts with one down get the session, not a single attach"` |
 | 10 | No hint: the status bar's right side is the date (Clarification 28) | — | bats: `"fleet sync, status and hint are unknown"` |
 | 11 | Keys (prefix `C-a`, `C-a C-a` sends it, so the guest's tmux keeps `C-b`; nothing else rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (a guest's window attaches; the guest's `C-b d` detaches) (Clarification 22) | *Plugins, keys, theme* | `tmux show -g prefix` prints `prefix C-a`; `tmux list-keys -T prefix` shows `C-a` as `send-prefix`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
-| 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
+| 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming a guest's window (`@fleet-guest`), else the pane's command and directory; the focused pane's border is blue. The guests' own tmux takes `guest.conf`, the same palette (Clarification 30) | *Plugins, keys, theme* | Early output (below); bats: `"guest.conf: loads clean on tmux's own keys, the mouse on, windows from 0, the tabs ending in workmux's anchor"` |
 | 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: an older fleet's session isn't rebuilt from inside it, which would end the pane fleet runs in"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
 | 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; ssh to each host, the tailnet route to each guest, ssh to each guest and `tmux` there) and names the one that fails, with ssh's own reason | *Discovery* | bats: `"doctor: names the guest whose ssh fails, with ssh's own reason, and one without tmux; exits 1 (D14)"`, `"doctor: all good exits 0 (D14)"` |
 | 15 | Nothing of a guest's is read but its `projects.json` entry (`vmName`, `ip`) (Clarification 28) | — | — |
 
 ## Early output
 
-The user's own fleet, on the laptop: `fleet` started with both hosts live, a screenshot or a `tmux capture-pane`
-of the overview and of a guest's window attached (layout D: agent-methodology's step 5 slice 6, its check). The user judges whether the overview answers "what
-is running, what needs me" at a glance and whether fleet's panes are told apart from their own shells (decision 12).
-(Before layout C, after slice 2, this was the overview and one agent window; Clarification 20.) Slice 1 has its own smaller sample: the restyled bar and borders on the laptop.
+The user's own fleet, on the laptop, layout E (agent-methodology's step 5 slice 6, its check): `fleet` started with
+both hosts live, a window per guest attached to its `agents` session, on its dashboard, in the guests' gruvbox. The
+user judges whether it answers "what is running, what needs me" at a glance. (Layouts A to D asked the same of
+fleet's own overview; Clarifications 20, 27.) Slice 1 has its own smaller sample: the restyled bar and borders on
+the laptop.
 
 ## Where things live
 
@@ -101,8 +102,8 @@ Guest ssh also adds `-o StrictHostKeyChecking=accept-new`, and `-i "$AGENTVM_KEY
 `--local`, `-i ~/.agentvm/keys/id_ed25519` when it exists (the host's own agentvm key); never `IdentitiesOnly`.
 On the laptop the key comes from `~/.ssh/config`: one stanza per guest subnet (`192.168.122.*` nixos,
 `192.168.123.*` thinkcentre) naming `User agentvm` and a copy of that host's key; `fleet doctor` shows ssh's own
-error for a guest it can't reach (Clarification 5). Every ssh to a guest is fleet's own, the guests' windows and the
-btop pane included, so a host needs no `~/.ssh/config` block (deck's own ssh did, Clarification 24).
+error for a guest it can't reach (Clarification 5). Every ssh to a guest is fleet's own, the guests' windows included,
+so a host needs no `~/.ssh/config` block (deck's own ssh did, Clarification 24).
 
 ## Layout
 
@@ -130,8 +131,9 @@ None since layout E: `status-right` is the date (Clarification 28).
 | tmux-continuum | save every 15 min; auto-restore on the laptop only | `@continuum-restore on` in the laptop's `plugins.tmux` only |
 
 Theme: gruvbox dark, set in `tmux.conf` itself, so the status line stays fleet's and the laptop and the hosts look
-the same. `pane-border-status top`; the format names fleet's overview pane and its resources pane's guest, and shows
-any other pane's command and directory (Clarification 4). The focused pane's border is blue.
+the same. `pane-border-status top`; the format names a guest's window (`@fleet-guest`), and shows any other pane's
+command and directory (Clarification 4). The focused pane's border is blue. The guests' own tmux takes `guest.conf`,
+the same palette on tmux's own keys (Clarification 30).
 
 ## Contract consumed
 

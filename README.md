@@ -157,6 +157,12 @@ for o in window-status-format window-status-current-format; do
   for w in $(tmux list-windows -t =agents -F '#{?@workmux_token,#{window_id},}'); do tmux set -w -t "$w" "$o" "$f"; done
 done
 tmux set -u -t agents status-left   # the UNATTENDED block comes back at the next start, or C-b u
+```
+
+Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
+hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
+let `~/.ssh/config` pick it by subnet (nixos's guests are on `192.168.122.*`, thinkcentre's on `192.168.123.*`):
+
 ```shell
 scp theo@nixos:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-nixos
 scp theo@thinkcentre:.agentvm/keys/id_ed25519 ~/.ssh/agentvm-thinkcentre
@@ -184,7 +190,7 @@ too. On a host, `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by
 | `fleet ls`, `fleet doctor`, `fleet help` | guests, the checks, the rest |
 
 Your own panes show their command and directory on their border; the focused pane's border is blue. The theme is
-gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect
+gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font; the guests' workmux icons do (above). After a laptop reboot resurrect
 restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux

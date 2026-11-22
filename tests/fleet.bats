@@ -186,6 +186,13 @@ wait_log() {
   ! t has-session -t =fleet-nixos 2>/dev/null
 }
 
+@test "attach: a host that is down still counts, so two hosts with one down get the session, not a single attach" {
+  touch "$FLEET_FIXTURES/fail-thinkcentre"
+  run timeout 3 "$FLEET"   # no terminal here, so its own tmux attach fails; the session is made first
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'agentvm-repos\nthinkcentre' ]
+}
+
 @test "attach GUEST: that guest from this terminal, of several; an unknown one dies" {
   run timeout 3 "$FLEET" attach agentvm-thinkrepos
   [ "$status" -eq 124 ]

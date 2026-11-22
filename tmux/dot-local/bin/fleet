@@ -101,7 +101,7 @@ guests() {
 # What a guest runs to be attached (a line saying so when it has no `agents` session): that session gets a window
 # `dashboard`, workmux's dashboard (started again
 # after each jump, which ends it), when it has none, swapped into the first place (window 0) when it isn't there; the
-# attach opens on it, so Enter on an agent goes to its window.
+# attach opens on it when no one else is attached, so Enter on an agent goes to its window.
 # Not `bash -l`: NixOS's /etc/profile resets PATH; workmux is in ~/.local/bin, off a non-login ssh's PATH.
 attach_script() {
   cat <<'EOF'
@@ -117,7 +117,9 @@ fi
 first=$(tmux list-windows -t =agents -F '#{window_index}' 2>/dev/null | head -n 1)
 [ -z "$first" ] || [ "$(tmux display -p -t =agents:dashboard '#{window_index}' 2>/dev/null)" = "$first" ] ||
   tmux swap-window -d -s =agents:dashboard -t "=agents:$first"
-exec tmux -u attach -t =agents \; select-window -t =agents:dashboard
+# on the dashboard, unless someone else is attached: the session's window is theirs too, and moving it moves their view
+if [ -z "$(tmux list-clients -t =agents 2>/dev/null)" ]; then exec tmux -u attach -t =agents \; select-window -t =agents:dashboard; fi
+exec tmux -u attach -t =agents
 EOF
 }
 
@@ -129,12 +131,12 @@ guest_ip() {
   done < <(guests 2>/dev/null)
 }
 
-# Attach guest $2 of host $1 (`-`: the host's first) from this terminal: one tmux, the guest's (`-u`: a UTF-8 client
-# whatever the ssh session's locale; tmux's own words when it can't). Returns when it ends; 1 when the guest isn't
-# known now.
+# Attach guest $2 of host $1 (`-`: the host's first; at IP $3 when the caller knows it) from this terminal: one tmux,
+# the guest's (`-u`: a UTF-8 client whatever the ssh session's locale; tmux's own words when it can't). Returns when it
+# ends; 1 when the guest isn't known now.
 attach_guest() {
-  local ip
-  ip=$(guest_ip "$1" "$2")
+  local ip=${3:-}
+  [ -n "$ip" ] || ip=$(guest_ip "$1" "$2")
   [ -n "$ip" ] || return 1
   ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "$(attach_script)"
 }
@@ -219,19 +221,20 @@ cmd__attach() {
 
 # fleet attach [GUEST]: that guest, or the only one, straight from this terminal (in a tmux pane, the guest's tmux
 # nests in it); with several and none named, the fleet session.
+# A host that didn't answer counts as a guest, so one down doesn't turn the laptop's session into a single attach.
 cmd_attach() {
-  local list host g
-  list=$(guests | awk '$2 != "-"')
+  local list host g ip
+  list=$(guests)
   if [ -n "${1:-}" ]; then
-    host=$(awk -v g="$1" '$2 == g { print $1; exit }' <<<"$list")
-    [ -n "$host" ] || die "no guest $1"
-    g=$1
-  elif [ -n "$list" ] && [ "$(wc -l <<<"$list")" = 1 ]; then
-    read -r host g _ <<<"$list"
+    read -r host g ip < <(awk -v g="$1" '$2 == g { print; exit }' <<<"$list")
+    [ -n "${host:-}" ] || die "no guest $1"
+  elif [ "$(grep -c . <<<"$list")" = 1 ]; then
+    read -r host g ip <<<"$list"
+    [ "$g" != - ] || host=''   # its host down: the session, whose window attaches once it answers
   fi
   if [ -n "${host:-}" ]; then
     [ -z "${TMUX:-}" ] || echo "fleet: inside tmux, so $g's tmux nests in this one; from a terminal outside tmux it is one" >&2
-    attach_guest "$host" "$g"
+    attach_guest "$host" "$g" "$ip"
     return
   fi
   cmd_up || exit 1
