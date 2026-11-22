@@ -34,7 +34,8 @@ and for Claude Code's status line the guests as well, managed with GNU Stow. `RE
 
 A session in a guest can't reach the laptop or the hosts' tmux: `fleet` is tested by the bats suite, which stubs
 ssh and ip (`tests/stub`) and answers from `tests/fixtures`. Nothing to install in a
-nixed-microvm guest (on the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). From the repo root, about
+nixed-microvm guest (an agentvm-smolvm guest has tmux and jq but no bats, 2026-11-22: `git clone --depth 1
+https://github.com/bats-core/bats-core /tmp/bats` and run `LC_ALL=C.UTF-8 /tmp/bats/bin/bats tests/`, bats 1.14.0) (on the laptop: `sudo pacman -S tmux jq fzf bash-bats shellcheck`). From the repo root, about
 four minutes, light enough to run without `methodology heavy`:
 
 ```bash

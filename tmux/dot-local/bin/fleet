@@ -62,6 +62,19 @@ default_session() { if [ "$LOCAL" = 1 ]; then echo "fleet-$(local_host)"; else e
 
 hosts_file() { echo "${FLEET_HOSTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/fleet/hosts}"; }
 
+projects_file() { echo "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json}"; }
+
+# What discovery reads is missing: why, in a line, empty when it is there. Checked where guests are needed, not in
+# guests(), which runs in a subshell, where a die doesn't stop fleet: a running session is attached without them.
+source_missing() {
+  if [ "$LOCAL" = 1 ]; then
+    [ -r "$(projects_file)" ] ||
+      echo "no $(projects_file): no agentvm guests on this machine; drop --local to reach the hosts in $(hosts_file)"
+  else
+    [ -r "$(hosts_file)" ] || echo "no hosts file $(hosts_file) (one ssh destination per line, e.g. theo@nixos), or use --local"
+  fi
+}
+
 # --- discovery -----------------------------------------------------------
 
 # projects.json on stdin -> "host guest ip" lines.
@@ -72,12 +85,13 @@ projects_lines() { jq -r --arg h "$1" 'to_entries[] | "\($h) \(.value.vmName) \(
 # once: one after another, a host that is down held up every later one.
 guests() {
   if [ "$LOCAL" = 1 ]; then
-    projects_lines "$(local_host)" < "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json}"
+    [ -r "$(projects_file)" ] || return 1
+    projects_lines "$(local_host)" < "$(projects_file)"
     return
   fi
   local f dest out tmp i=0
   f=$(hosts_file)
-  [ -r "$f" ] || die "no hosts file $f (one ssh destination per line, e.g. theo@nixos), or use --local"
+  [ -r "$f" ] || return 1
   mux_dir
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fleet-guests.XXXXXX") || return 1
   while read -r dest; do
@@ -157,6 +171,7 @@ cmd_up() {
       die "$s is from an older fleet and is rebuilt, which would end this pane: run fleet from another session, or detach first"
     tmx kill-session -t "=$s"
   fi
+  local why; why=$(source_missing); [ -z "$why" ] || die "$why"
   echo "fleet: discovering guests..." >&2
   # shellcheck disable=SC2034 # ip: the attach looks it up itself, each time
   while read -r h g ip; do
@@ -170,7 +185,7 @@ cmd_up() {
     n=$((n + 1))
     tmx set -w -t "$p" @fleet-guest "${g:+$g · }$h"
   done < <(guests)
-  [ "$n" -gt 0 ] || die "no guests: $(if [ "$LOCAL" = 1 ]; then echo "${AGENTVM_PROJECTS:-/etc/agentvm/projects.json} lists none"; else echo "$(hosts_file) names no host"; fi)"
+  [ "$n" -gt 0 ] || die "no guests: $(if [ "$LOCAL" = 1 ]; then echo "$(projects_file) lists none"; else echo "$(hosts_file) names no host"; fi)"
   if [ "$LOCAL" = 1 ]; then tmx set -t "=$s:" @fleet-mode local; else tmx set -t "=$s:" @fleet-mode remote; fi
   tmx set -g "@fleet-booted-$s" "$LAYOUT"
 }
@@ -182,7 +197,9 @@ cmd_doctor() {
   for c in tmux jq ssh; do
     if command -v "$c" >/dev/null; then ok "$c"; else bad "$c not on PATH"; fi
   done
-  if [ "$LOCAL" = 0 ]; then
+  if [ "$LOCAL" = 1 ]; then
+    if [ -r "$(projects_file)" ]; then ok "$(projects_file)"; else bad "$(source_missing)"; fi
+  else
     if [ -r "$(hosts_file)" ]; then
       while read -r dest; do
         case $dest in ''|'#'*) continue ;; esac
@@ -227,7 +244,7 @@ cmd_attach() {
   list=$(guests)
   if [ -n "${1:-}" ]; then
     read -r host g ip < <(awk -v g="$1" '$2 == g { print; exit }' <<<"$list")
-    [ -n "${host:-}" ] || die "no guest $1"
+    [ -n "${host:-}" ] || die "$(source_missing | grep . || echo "no guest $1")"
   elif [ "$(grep -c . <<<"$list")" = 1 ]; then
     read -r host g ip <<<"$list"
     [ "$g" != - ] || host=''   # its host down: the session, whose window attaches once it answers
@@ -270,7 +287,7 @@ main() {
     attach) cmd_attach "$@" ;;
     up) cmd_up ;;
     _attach) cmd__attach "$@" ;;
-    ls) guests ;;
+    ls) local why; why=$(source_missing); [ -z "$why" ] || die "$why"; guests ;;
     doctor) cmd_doctor ;;
     help|-h|--help) usage ;;
     _attach-script) attach_script ;;

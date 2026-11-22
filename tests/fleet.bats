@@ -145,6 +145,38 @@ wait_log() {
   ! t has-session -t =fleet-nixos 2>/dev/null
 }
 
+@test "--local with no projects.json: said once, as what to do, and no session" {
+  for c in "" up ls; do
+    AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json FLEET_HOSTNAME=nixos run "$FLEET" --local $c
+    [ "$status" -eq 1 ]
+    [ "$output" = "fleet: no $BATS_TEST_TMPDIR/none.json: no agentvm guests on this machine; drop --local to reach the hosts in $FLEET_HOSTS_FILE" ]
+  done
+  ! t has-session -t =fleet-nixos 2>/dev/null
+  AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json FLEET_HOSTNAME=nixos run "$FLEET" --local attach agentvm-repos
+  [ "$output" = "fleet: no $BATS_TEST_TMPDIR/none.json: no agentvm guests on this machine; drop --local to reach the hosts in $FLEET_HOSTS_FILE" ]
+}
+
+@test "--local with no projects.json: a running session is still attached" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  "$FLEET" --local up
+  AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json run "$FLEET" --local up
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "no hosts file: said once" {
+  FLEET_HOSTS_FILE=$BATS_TEST_TMPDIR/none run "$FLEET"
+  [ "$status" -eq 1 ]
+  [ "$output" = "fleet: no hosts file $BATS_TEST_TMPDIR/none (one ssh destination per line, e.g. theo@nixos), or use --local" ]
+}
+
+@test "doctor --local names a missing projects.json" {
+  AGENTVM_PROJECTS=$BATS_TEST_TMPDIR/none.json FLEET_HOSTNAME=nixos run "$FLEET" --local doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"FAIL  no $BATS_TEST_TMPDIR/none.json: no agentvm guests on this machine"* ]]
+  [[ "$output" != *"No such file"* ]]
+}
+
 @test "fleet sync, status and hint are unknown" {
   for c in sync status hint; do
     run "$FLEET" "$c"
