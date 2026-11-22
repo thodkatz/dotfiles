@@ -24,7 +24,7 @@ case $cmd in
       cat "$fx/guest-$dest.json"
       [ ! -e "$fx/modes-$dest" ] || { echo fleet:modes; cat "$fx/modes-$dest"; }
     else echo "table of $dest"; fi ;;
-  *'tmux attach -t =agents'*|*btop*) exec sleep 600 ;;
-  true|'test -x .local/bin/workmux') [ ! -e "$fx/nowm-$dest" ] ;;
+  *'tmux -u attach -t =agents'*|*btop*) exec sleep 600 ;;
+  true|'command -v workmux || test -x .local/bin/workmux') [ ! -e "$fx/nowm-$dest" ] ;;
   *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;
 esac

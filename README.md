@@ -115,8 +115,8 @@ rm -rf ~/.local/bin/agent-deck ~/.config/agent-deck   # deck itself and its conf
 
 `prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
 reaches it within 30 s, no restart. A session an older fleet built (its `deck` window) is rebuilt in the new layout by
-running `fleet` once, from outside that session (from inside it, `fleet` would kill the session it runs in; detach
-first, or run it in another session). If a reload leaves stale styling behind, `tmux kill-server` starts clean;
+running `fleet` once, from outside that session (from inside it, `fleet` says so and stops: detach first, or run it
+in another session). If a reload leaves stale styling behind, `tmux kill-server` starts clean;
 resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's

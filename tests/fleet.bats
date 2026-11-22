@@ -83,6 +83,10 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
   [ "$(sed -n '/^fleet:modes$/,$p' <<<"$output" | sort)" = "$(printf '%s\n' fleet:modes "$a"$'\tunattended' "$b"$'\t' | sort)" ]
   # tmux needs a UTF-8 client for workmux's pane format, whatever the ssh session brings
   grep -qx 'LC_ALL=C.UTF-8 status --all --json' "$FLEET_FIXTURES/workmux.log"
+  # a warning of workmux's on stderr stays out of the JSON
+  touch "$FLEET_FIXTURES/workmux-warns"
+  run probe json
+  [ "$(sed '/^fleet:modes$/,$d' <<<"$output")" = "$(cat "$FLEET_FIXTURES/guest-192.168.122.51.json")" ]
   run probe table
   [ "$status" -eq 0 ]
   [ "$output" = "workmux table" ]
@@ -155,9 +159,9 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
 @test "up: a guest's window attaches its agents session over the guest's ssh, unshared" {
   "$FLEET" up
   [[ "$(t display -p -t =fleet:agentvm-thinkrepos '#{pane_start_command}')" == *fleet*_attach*fleet*agentvm-thinkrepos* ]]
-  wait_log 'agentvm@192.168.123.51 tmux attach -t =agents'
-  grep 'tmux attach' "$FLEET_FIXTURES/ssh.log" | grep -q 'ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.123.51'
-  ! grep 'tmux attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
+  wait_log 'agentvm@192.168.123.51 tmux -u attach -t =agents'
+  grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q 'ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.123.51'
+  ! grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
 }
 
 @test "attach: after the attach ends, it says so and attaches again at Enter" {
@@ -168,10 +172,10 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
   t new-window -d -t =fleet: -n try "$FLEET _attach fleet agentvm-repos"
   for _ in $(seq 50); do t capture-pane -p -t =fleet:try | grep -q "not attached" && break; sleep 0.1; done
   t capture-pane -p -t =fleet:try | grep -qx "\[fleet\] agentvm-repos's agents: not attached; Enter or 15 s attaches again"
-  n=$(grep -c 'agentvm@192.168.122.51 tmux attach' "$FLEET_FIXTURES/ssh.log")
+  n=$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")
   t send-keys -t =fleet:try Enter
-  for _ in $(seq 50); do [ "$(grep -c 'agentvm@192.168.122.51 tmux attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ] && break; sleep 0.1; done
-  [ "$(grep -c 'agentvm@192.168.122.51 tmux attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ]
+  for _ in $(seq 50); do [ "$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ] && break; sleep 0.1; done
+  [ "$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ]
 }
 
 @test "up: window overview runs its loop, the first guest's btop to its right" {
@@ -184,21 +188,15 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
   grep -q 'ssh -t .*agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored, and stops an old hint loop (D13)" {
+@test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored (D13)" {
   "$FLEET" up
   t new-window -d -t =fleet: -n mine 'sleep 600'
   "$FLEET" up
   t list-windows -t =fleet -F '#W' | grep -qx mine
-  # an older fleet's session (layout c, its deck window) and an older hint loop
+  # an older fleet's session (layout c, its deck window)
   t set -g @fleet-booted-fleet c
-  # its stand-in names _hintloop, as the loop's args did, and holds none of bats' output
-  bash -c 'while :; do sleep 1; done # _hintloop' </dev/null >/dev/null 2>&1 3>&- & old=$!
-  echo "$old 5" > "$FLEET_STATE/fleet/hintloop.pid"
   "$FLEET" up
   ! t list-windows -t =fleet -F '#W' | grep -qx mine || false
-  for _ in $(seq 20); do kill -0 "$old" 2>/dev/null || break; sleep 0.1; done
-  ! kill -0 "$old" 2>/dev/null || false
-  [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
   [ "$(t show -gv @fleet-booted-fleet)" = d ]
   # resurrect's (no marker)
   t new-window -d -t =fleet: -n mine 'sleep 600'
@@ -216,6 +214,11 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
   [ "$output" = $'overview\nagentvm-repos' ]
   rm "$FLEET_FIXTURES/fail-thinkcentre"
   t new-window -d -t =fleet: -n mine 'sleep 600'
+  # no ssh at an up of a running session: the new guest waits for the overview's round to find it
+  "$FLEET" up
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'overview\nagentvm-repos\nmine' ]
+  "$FLEET" _round fleet >/dev/null
   "$FLEET" up
   "$FLEET" up
   run t list-windows -t =fleet -F '#W'
@@ -224,6 +227,15 @@ probe() { "$FLEET" _probe-script | PATH=${2:-$PATH} "$(command -v bash)" -s -- "
   "$FLEET" up
   run t list-windows -t =fleet -F '#W'
   [ "$output" = $'overview\nmine\nagentvm-thinkrepos\nagentvm-repos' ]
+}
+
+@test "up: an older fleet's session isn't rebuilt from inside it, which would end the pane fleet runs in" {
+  "$FLEET" up
+  t set -g @fleet-booted-fleet c
+  t new-window -d -t =fleet: -n mine "'$FLEET' up > '$BATS_TEST_TMPDIR/out' 2>&1; echo \$? >> '$BATS_TEST_TMPDIR/out'; sleep 600"
+  for _ in $(seq 50); do [ -s "$BATS_TEST_TMPDIR/out" ] && grep -qx 1 "$BATS_TEST_TMPDIR/out" && break; sleep 0.1; done
+  [ "$(cat "$BATS_TEST_TMPDIR/out")" = $'fleet: fleet is from an older fleet and is rebuilt, which would end this pane: run fleet from another session, or detach first\n1' ]
+  t list-windows -t =fleet -F '#W' | grep -qx mine
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -406,10 +418,10 @@ OV_THINK=$'agentvm-thinkrepos · thinkcentre\n  agent-methodology (main)  claude
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up
   wait_log 'agentvm@192.168.122.51 .*btop'
-  wait_log 'agentvm@192.168.123.51 tmux attach'
+  wait_log 'agentvm@192.168.123.51 tmux -u attach'
   grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- json' "$FLEET_FIXTURES/ssh.log"
   grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.123.51 tmux attach' "$FLEET_FIXTURES/ssh.log"
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.123.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log"
   ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
 }
 

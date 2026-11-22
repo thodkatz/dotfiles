@@ -117,9 +117,10 @@ btop pane included, so a host needs no `~/.ssh/config` block (deck's own ssh did
 
 Session `fleet`, or `fleet-<host>` under `--local`, built by `fleet` (or `fleet up`) and marked
 `@fleet-booted-<session>` = `d`; a session without that value (resurrect's, or an older fleet's deck window) is
-killed and rebuilt, and an older fleet's hint loop (`hintloop.pid`) stopped. A session with it keeps its windows, and
-gets a window for each guest that has none (its host was down at the start, or the window was closed), after the
-others.
+killed and rebuilt, but not by a `fleet` run inside it, which would die with it: that one says so and exits 1. A
+session with it keeps its windows, and gets a window for each guest in its `fleet.json` that has none (its host was
+down at the start, and the overview's loop has found it since; or the window was closed), after the others, with no
+ssh of its own. The older fleets' hint loop (`hintloop.pid`, before layout C) is no longer stopped: none runs.
 
 - Window `overview`: a loop (`@fleet-overview` 1) that every `FLEET_OVERVIEW_INTERVAL` (30 s) runs one round with
   the `fleet` on disk (`fleet _round`), so a pull needs no restart: discover, write the hint, print per guest its name

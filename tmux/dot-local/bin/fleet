@@ -117,8 +117,10 @@ if ! tmux list-sessions >/dev/null 2>&1; then
   if [ "$mode" = json ]; then echo '{"agents": []}'; else echo "no agents (no tmux server)"; fi
   exit 0
 fi
-if ! out=$("$wm" status --all $([ "$mode" != json ] || echo --json) 2>&1); then
-  echo "fleet:error ${out##*$'\n'}"; exit 0
+# stderr apart: a warning on success must not run into the JSON
+args=(status --all); [ "$mode" != json ] || args+=(--json)
+if ! out=$("$wm" "${args[@]}" 2>/dev/null); then
+  err=$("$wm" "${args[@]}" 2>&1 >/dev/null); echo "fleet:error ${err##*$'\n'}"; exit 0
 fi
 printf '%s\n' "$out"
 [ "$mode" = json ] || exit 0
@@ -232,35 +234,32 @@ hint_refresh() { discover "$(sdir "$1")/fleet.json" && hint_write "$1"; }
 
 # --- commands ------------------------------------------------------------
 
-# A window per guest that has none yet (window option @fleet-guest), after the others: its pane attaches the guest's
-# agents session (_attach). A guest whose host didn't answer gets its window at a later `fleet`.
+# A window per guest in the session's fleet.json that has none yet (window option @fleet-guest), after the others: its
+# pane attaches the guest's agents session (_attach). A guest whose host didn't answer gets its window at a `fleet`
+# after the overview's loop has found it; no ssh here, so a host that is down never holds up a `fleet`.
 guest_windows() {
-  local s=$1 have h g ip p
+  local s=$1 have g p
   have=$(tmx list-windows -t "=$s" -F '#{@fleet-guest}' 2>/dev/null)
-  # shellcheck disable=SC2034 # h and ip: guests' other columns
-  while read -r h g ip; do
-    if [ "$g" = - ] || grep -qxF -- "$g" <<<"$have"; then continue; fi
+  while read -r g; do
+    if grep -qxF -- "$g" <<<"$have"; then continue; fi
     p=$(tmx new-window -d -a -t "=$s:{end}" -n "$g" -P -F '#{pane_id}' "$(self_cmd _attach "$s" "$g")") &&
       tmx set -w -t "$p" @fleet-guest "$g"
-  done < <(guests)
+  done < <(jq -r '.[] | select(.guest != "-") | .guest' "$(sdir "$s")/fleet.json" 2>/dev/null)
 }
 
 # The session: window overview, its loop (_overview) and the first guest's btop to its right, then a window per guest.
-# A session another layout built, or resurrect restored, is rebuilt, and the hint loop an older fleet left running is
-# stopped; one this layout built keeps its windows and gets a window for a guest new since.
+# A session another layout built, or resurrect restored, is rebuilt (never from inside it, which would kill this
+# fleet with it); one this layout built keeps its windows and gets a window for a guest new since.
 cmd_up() {
-  local s pid first pidf p
+  local s pid first p
   s=$(default_session)
   if tmx has-session -t "=$s" 2>/dev/null; then
     # The marker lives as long as the server: a session without it was
     # restored by resurrect into a new server, untagged, so rebuild it.
     if [ "$(tmx show -gv "@fleet-booted-$s" 2>/dev/null)" = "$LAYOUT" ]; then guest_windows "$s"; return 0; fi
+    [ -z "${TMUX:-}" ] || [ "$(tmx display -p '#S' 2>/dev/null)" != "$s" ] ||
+      die "$s is from an older fleet and is rebuilt, which would end this pane: run fleet from another session, or detach first"
     tmx kill-session -t "=$s"
-  fi
-  pidf=$(sdir "$s")/hintloop.pid
-  if [ -r "$pidf" ] && read -r p _ <"$pidf"; then
-    [[ "$(ps -o args= -p "$p" 2>/dev/null)" != *_hintloop* ]] || kill "$p" 2>/dev/null
-    rm -f "$pidf"
   fi
   echo "fleet: discovering guests..." >&2
   discover "$(sdir "$s")/fleet.json"
@@ -321,7 +320,8 @@ cmd_doctor() {
       if ip route get "$ip" 2>/dev/null | grep -q tailscale; then ok "route to $ip via tailscale"
       else bad "no tailnet route to $ip ($g on $h): tailscale up --accept-routes"; fi
     fi
-    if err=$(ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" test -x .local/bin/workmux </dev/null 2>&1 >/dev/null); then
+    # as the probe finds it: on PATH, else in ~/.local/bin
+    if err=$(ssh "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" 'command -v workmux || test -x .local/bin/workmux' </dev/null 2>&1 >/dev/null); then
       ok "ssh $GUEST_USER@$ip ($g): workmux"
     else
       bad "ssh $GUEST_USER@$ip ($g): no ssh, or no workmux there (agent-methodology's methodology place installs it)"
@@ -417,8 +417,8 @@ cmd__attach() {
   while :; do
     ip=$(guest_ip "$s" "$g")
     if [ -n "$ip" ] && [ "$ip" != - ]; then
-      ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" \
-        'tmux attach -t =agents 2>/dev/null || echo "no agents session on this guest: methodology next starts one"'
+      # -u: a UTF-8 client whatever the ssh session's locale (the probe's LC_ALL); tmux's own words when it can't
+      ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" tmux -u attach -t =agents
     fi
     echo "[fleet] $g's agents: not attached; Enter or 15 s attaches again"
     read -r -t 15 _ || true
