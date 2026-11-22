@@ -70,8 +70,8 @@ the laptop.
 - `modules/home.nix`: `programs.tmux` goes, since it generates `tmux.conf` itself and would collide with the link;
   `tmux`, `jq` and `fzf` go in `home.packages`. `xdg.configFile."tmux/tmux.conf".source` and
   `home.file.".local/bin/fleet".source` are `config.lib.file.mkOutOfStoreSymlink "/home/theo/repos/dotfiles/…"`.
-  Its agent-deck lines (links to the `agent-deck` package, its install) go with agent-methodology's step 5 slice 5
-  (Clarification 27).
+  Its agent-deck lines (links to the `agent-deck` package, its install) went with agent-methodology's step 5 slice 5
+  (nixed#44; Clarification 27).
   `xdg.configFile."tmux/plugins.tmux".text` sets the plugins' options (continuum's restore off) and has one
   `run-shell` per plugin, from `pkgs.tmuxPlugins.{tmux-sessionx,extrakto,yank,resurrect,continuum}`
   (attribute names and each plugin's `.tmux` entry path checked against nixpkgs in the plan).
