@@ -20,6 +20,8 @@ setup() {
 
 teardown() {
   tmux -L "$FLEET_TMUX_SOCKET" kill-server 2>/dev/null || true
+  # the attach script test's own default server, under its TMUX_TMPDIR
+  [ -z "${GUEST_TMUX:-}" ] || TMUX_TMPDIR=$GUEST_TMUX tmux kill-server 2>/dev/null || true
 }
 
 t() { tmux -L "$FLEET_TMUX_SOCKET" "$@"; }
@@ -68,7 +70,7 @@ wait_log() {
 @test "up: a guest's window attaches its agents session over the guest's ssh, unshared" {
   "$FLEET" up
   [[ "$(t display -p -t =fleet:agentvm-thinkrepos '#{pane_start_command}')" == *fleet*_attach*thinkcentre*agentvm-thinkrepos* ]]
-  wait_log 'agentvm@192.168.123.51 tmux -u attach -t =agents'
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach -t =agents'
   grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q 'ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.123.51'
   ! grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
 }
@@ -79,10 +81,10 @@ wait_log() {
   "$FLEET" up
   for _ in $(seq 50); do t capture-pane -p -t =fleet:agentvm-repos | grep -q "not attached" && break; sleep 0.1; done
   t capture-pane -p -t =fleet:agentvm-repos | grep -qx "\[fleet\] agentvm-repos not attached; Enter or 15 s attaches again"
-  n=$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")
+  n=$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")
   t send-keys -t =fleet:agentvm-repos Enter
-  for _ in $(seq 50); do [ "$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ] && break; sleep 0.1; done
-  [ "$(grep -c 'agentvm@192.168.122.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ]
+  for _ in $(seq 50); do [ "$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ] && break; sleep 0.1; done
+  [ "$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ]
 }
 
 @test "attach: a host down at the start gets a window named after it, which attaches its guest once it answers" {
@@ -95,7 +97,7 @@ wait_log() {
   t capture-pane -p -t =fleet:thinkcentre | grep -qx "\[fleet\] thinkcentre not attached; Enter or 15 s attaches again"
   rm "$FLEET_FIXTURES/fail-thinkcentre"
   t send-keys -t =fleet:thinkcentre Enter
-  wait_log 'agentvm@192.168.123.51 tmux -u attach -t =agents'
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach -t =agents'
 }
 
 @test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored (D13)" {
@@ -151,6 +153,44 @@ wait_log() {
   done
 }
 
+# --- the attach: one guest from this terminal, the dashboard window ---------------
+
+@test "attach script: the agents session gets one dashboard window, workmux's dashboard again after each jump" {
+  export GUEST_TMUX=$BATS_TEST_TMPDIR/tt TMUX_TMPDIR=$BATS_TEST_TMPDIR/tt
+  mkdir -p "$TMUX_TMPDIR"
+  # no tmux server: nothing made, the attach fails
+  run bash -c "'$FLEET' _attach-script | bash"
+  [ "$status" -ne 0 ]
+  ! tmux has-session 2>/dev/null || false
+  tmux new-session -d -s agents -n wm-a 'sleep 600'
+  for _ in 1 2; do
+    # no terminal here, so the attach itself fails; the window is made first, once
+    run bash -c "'$FLEET' _attach-script | bash"
+    run tmux list-windows -t =agents -F '#W'
+    [ "$output" = $'wm-a\ndashboard' ]
+  done
+  [[ "$(tmux display -p -t =agents:dashboard '#{pane_start_command}')" == *'while :; do '*'workmux dashboard || sleep 5; done'* ]]
+}
+
+@test "attach: the only guest is attached from this terminal, its agents session opening on the dashboard; no fleet session" {
+  export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
+  run timeout 3 "$FLEET" --local
+  [ "$status" -eq 124 ]   # the stub's attach holds, as a real one does
+  grep '^ssh -t .*agentvm@192.168.122.51 ' "$FLEET_FIXTURES/ssh.log" | grep -qF 'tmux -u attach -t =agents \; select-window -t =agents:dashboard'
+  ! t has-session -t =fleet-nixos 2>/dev/null
+}
+
+@test "attach GUEST: that guest from this terminal, of several; an unknown one dies" {
+  run timeout 3 "$FLEET" attach agentvm-thinkrepos
+  [ "$status" -eq 124 ]
+  grep -q 'agentvm@192.168.123.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log" || false
+  ! t has-session -t =fleet 2>/dev/null || false
+  run "$FLEET" attach nope
+  [ "$status" -eq 1 ]
+  [ "$output" = "fleet: no guest nope" ]
+}
+
 # --- doctor and ssh ----------------------------------------------------------
 
 @test "doctor: names the guest whose ssh fails, with ssh's own reason, and one without tmux; exits 1 (D14)" {
@@ -183,7 +223,7 @@ wait_log() {
 
 @test "ssh: discovery shares a connection; the attach doesn't" {
   "$FLEET" up
-  wait_log 'agentvm@192.168.122.51 tmux -u attach'
+  wait_log 'agentvm@192.168.122.51 .*tmux -u attach'
   grep -q "ControlMaster=auto -o ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
   ! grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster || false
   [ "$(stat -c %a "$FLEET_STATE/ssh")" = 700 ]
@@ -207,8 +247,8 @@ wait_log() {
 @test "ssh: AGENTVM_KEY is the guests' identity, in the guests' windows too" {
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up
-  wait_log 'agentvm@192.168.123.51 tmux -u attach'
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.123.51 tmux -u attach' "$FLEET_FIXTURES/ssh.log"
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach'
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.123.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log"
   ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
 }
 
@@ -218,8 +258,8 @@ wait_log() {
   ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log" || false
   mkdir -p "$HOME/.agentvm/keys" && touch "$HOME/.agentvm/keys/id_ed25519"
   "$FLEET" --local up
-  wait_log 'agentvm@192.168.122.51 tmux -u attach'
-  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 tmux -u attach" "$FLEET_FIXTURES/ssh.log"
+  wait_log 'agentvm@192.168.122.51 .*tmux -u attach'
+  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 .*tmux -u attach" "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "tmux.conf: resurrect's post-save hook drops fleet's sessions from a save" {

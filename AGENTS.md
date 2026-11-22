@@ -6,8 +6,9 @@ and for Claude Code's status line the guests as well, managed with GNU Stow. `RE
 
 ## The code
 
-- **`fleet`** (`tmux/dot-local/bin/fleet`, bash) builds a tmux session with a window per guest, each attaching that
-  guest's `agents` tmux session over ssh, the guests read from each host's `/etc/agentvm/projects.json`. Its design, decisions D1–D15
+- **`fleet`** (`tmux/dot-local/bin/fleet`, bash) attaches each guest's `agents` tmux session over ssh, on a
+  `dashboard` window it makes there: the only guest straight from the terminal, several in a tmux session with a
+  window per guest; the guests read from each host's `/etc/agentvm/projects.json`. Its design, decisions D1–D15
   and clarifications: `docs/fleet-design.md`.
 - **`claude/dot-config/agent-methodology/statusline-render`** (bash) draws Claude Code's status line:
   claude-powerline's boxes plus the context budget.

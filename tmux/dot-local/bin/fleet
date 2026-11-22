@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# fleet: one tmux session over the agent sessions on the microVM guests of the hosts in ~/.config/fleet/hosts (or,
-# with --local, of this host alone): a window per guest, each attaching that guest's own `agents` tmux session
-# (workmux's window per agent) over ssh. Design: docs/fleet-design.md in dotfiles.
+# fleet: the agent sessions on the microVM guests of the hosts in ~/.config/fleet/hosts (or, with --local, of this
+# host alone), each guest's own `agents` tmux session (workmux's window per agent, and a `dashboard` window) attached
+# over ssh: straight from this terminal when there is one guest, else a tmux session with a window per guest.
+# Design: docs/fleet-design.md in dotfiles.
 set -uo pipefail
 
 FLEET_SELF=$(readlink -f "${BASH_SOURCE[0]}")
@@ -95,6 +96,39 @@ guests() {
   rm -rf "$tmp"
 }
 
+# --- the attach ----------------------------------------------------------
+
+# What a guest runs to be attached: its `agents` session gets a window `dashboard`, workmux's dashboard (started again
+# after each jump, which ends it), when it has none; the attach opens on it, so Enter on an agent goes to its window.
+# Not `bash -l`: NixOS's /etc/profile resets PATH; workmux is in ~/.local/bin, off a non-login ssh's PATH.
+attach_script() {
+  cat <<'EOF'
+wm=$(command -v workmux || echo "$HOME/.local/bin/workmux")
+if tmux has-session -t =agents 2>/dev/null && ! tmux list-windows -t =agents -F '#W' | grep -qx dashboard; then
+  tmux new-window -d -t =agents: -n dashboard "while :; do $wm dashboard || sleep 5; done"
+fi
+exec tmux -u attach -t =agents \; select-window -t =agents:dashboard
+EOF
+}
+
+# The IP of guest $2 of host $1 (`-`: the host's first), now; nothing when it isn't known.
+guest_ip() {
+  local h g i
+  while read -r h g i; do
+    if [ "$h" = "$1" ] && [ "$g" != - ] && { [ "$2" = - ] || [ "$g" = "$2" ]; }; then echo "$i"; return; fi
+  done < <(guests 2>/dev/null)
+}
+
+# Attach guest $2 of host $1 (`-`: the host's first) from this terminal: one tmux, the guest's (`-u`: a UTF-8 client
+# whatever the ssh session's locale; tmux's own words when it can't). Returns when it ends; 1 when the guest isn't
+# known now.
+attach_guest() {
+  local ip
+  ip=$(guest_ip "$1" "$2")
+  [ -n "$ip" ] || return 1
+  ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" "$(attach_script)"
+}
+
 # --- commands ------------------------------------------------------------
 
 # The session: a window per guest, named after it (a host whose guests couldn't be read: a window named after the
@@ -162,28 +196,46 @@ cmd_doctor() {
   return "$fail"
 }
 
-# Pane command: guest $2 of host $1 (`-`: the host's first, once it answers), its `agents` tmux session attached over
-# ssh. There `C-b` is the guest's tmux (`C-b w` picks an agent, `C-b d` comes back here). The guest is looked up again
-# each time, and attached again after a detach, a dropped link or no session, at Enter or in 15 s.
+# Pane command (a guest's window): attach_guest, then again after a detach, a dropped link or no session, at Enter
+# or in 15 s, the guest looked up again each time. There `C-b` is the guest's tmux (`C-b d` comes back here).
 cmd__attach() {
-  local host=$1 g=$2 h gg i ip
+  local host=$1 g=$2
   while :; do
-    ip=-
-    while read -r h gg i; do
-      if [ "$h" = "$host" ] && [ "$gg" != - ] && { [ "$g" = - ] || [ "$gg" = "$g" ]; }; then ip=$i; break; fi
-    done < <(guests 2>/dev/null)
-    # -u: a UTF-8 client whatever the ssh session's locale; tmux's own words when it can't
-    [ "$ip" = - ] || ssh -t "${GUEST_SSH_OPTS[@]}" "$GUEST_USER@$ip" tmux -u attach -t =agents
+    attach_guest "$host" "$g"
     echo "[fleet] $( [ "$g" = - ] && echo "$host" || echo "$g") not attached; Enter or 15 s attaches again"
     read -r -t 15 _ || true
   done
+}
+
+# fleet attach [GUEST]: that guest, or the only one, straight from this terminal (in a tmux pane, the guest's tmux
+# nests in it); with several and none named, the fleet session.
+cmd_attach() {
+  local list host g
+  list=$(guests | awk '$2 != "-"')
+  if [ -n "${1:-}" ]; then
+    host=$(awk -v g="$1" '$2 == g { print $1; exit }' <<<"$list")
+    [ -n "$host" ] || die "no guest $1"
+    g=$1
+  elif [ -n "$list" ] && [ "$(wc -l <<<"$list")" = 1 ]; then
+    read -r host g _ <<<"$list"
+  fi
+  if [ -n "${host:-}" ]; then
+    [ -z "${TMUX:-}" ] || echo "fleet: inside tmux, so $g's tmux nests in this one; from a terminal outside tmux it is one" >&2
+    attach_guest "$host" "$g"
+    return
+  fi
+  cmd_up || exit 1
+  if [ -n "${TMUX:-}" ]; then tmx switch-client -t "=$(default_session)"
+  else exec tmux ${FLEET_TMUX_SOCKET:+-L "$FLEET_TMUX_SOCKET"} attach -t "=$(default_session)"; fi
 }
 
 usage() {
   cat <<'EOF'
 usage: fleet [--local] [command]
 
-  (none)        start the fleet session if needed, then attach or switch to it
+  (none), attach [GUEST]
+                that guest, or the only one, attached from this terminal; with
+                several, the fleet session (a window per guest), started if needed
   up            start the fleet session if needed (no attach)
   ls            list guests: host guest ip
   doctor        check each prerequisite, name the one that fails
@@ -191,8 +243,8 @@ usage: fleet [--local] [command]
 
 --local: this host's guests only (/etc/agentvm/projects.json), session fleet-<host>.
 Hosts: ~/.config/fleet/hosts, one ssh destination per line (theo@nixos).
-A window per guest attaches its agents session: C-b there is the guest's tmux,
-C-b w picks an agent, C-b d comes back.
+A guest's agents session opens on its window `dashboard` (workmux's): Enter on an
+agent goes to it. C-b there is the guest's tmux, C-b w picks a window, C-b d detaches.
 EOF
 }
 
@@ -202,15 +254,13 @@ main() {
   local cmd=${1:-attach}
   [ $# -eq 0 ] || shift
   case $cmd in
-    attach)
-      cmd_up || exit 1
-      if [ -n "${TMUX:-}" ]; then tmx switch-client -t "=$(default_session)"
-      else exec tmux ${FLEET_TMUX_SOCKET:+-L "$FLEET_TMUX_SOCKET"} attach -t "=$(default_session)"; fi ;;
+    attach) cmd_attach "$@" ;;
     up) cmd_up ;;
     _attach) cmd__attach "$@" ;;
     ls) guests ;;
     doctor) cmd_doctor ;;
     help|-h|--help) usage ;;
+    _attach-script) attach_script ;;
     *) usage >&2; exit 2 ;;
   esac
 }

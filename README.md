@@ -120,16 +120,24 @@ in another session). If a reload leaves stale styling behind, `tmux kill-server`
 resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
-guests only). Inside, a window per guest attaches its agents, and `fleet doctor` says what is missing when something
-doesn't show. Details in *fleet* below.
+guests only), and `fleet doctor` says what is missing when something doesn't show. Details in *fleet* below.
 
 ### fleet: every agent session in one tmux session
 
-`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet` with a window per microVM guest (one per host
-today: nixos's `agentvm-repos`, thinkcentre's `agentvm-thinkrepos`). Each attaches that guest's own `agents` tmux
-session over ssh, where agent-methodology's sessions run on [workmux](https://github.com/raine/workmux), a window per
-agent; nothing of fleet's is drawn over it. The hosts are in `~/.config/fleet/hosts` (one ssh destination per line,
-from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
+`fleet` (`tmux/dot-local/bin/fleet`) attaches each microVM guest's own `agents` tmux session over ssh, where
+agent-methodology's sessions run on [workmux](https://github.com/raine/workmux), a window per agent. The session
+opens on its window `dashboard`, workmux's dashboard of every agent: Enter (or 1–9) on one goes to its window, and
+`C-b w` comes back. fleet makes that window when it isn't there, and restarts the dashboard after each jump, which
+ends it.
+
+- **One guest, one tmux.** On a host (`fleet --local`: its one guest) or with `fleet attach <guest>`, the guest's tmux
+  is attached straight from your terminal. Run it from a terminal outside tmux: inside one, the guest's nests in it
+  (fleet says so).
+- **Several guests** (the laptop: nixos's `agentvm-repos`, thinkcentre's `agentvm-thinkrepos`): a tmux session
+  `fleet` with a window per guest, each attaching its guest. Two guests are two tmux servers on two machines, so
+  here the guest's tmux nests in fleet's: `C-a` is fleet's, `C-b` the guest's.
+
+The hosts are in `~/.config/fleet/hosts` (one ssh destination per line, from this package).
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
 hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
@@ -156,8 +164,9 @@ too. On a host, `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by
 
 | | |
 |---|---|
-| `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| a guest's window | named after the guest: its `agents` tmux session, attached over ssh. `C-b` is the guest's tmux there: its bar lists the agents' windows (with workmux's status icons, and `UNATTENDED` on an unattended one), `C-b w` picks one, `workmux dashboard` in a pane shows them all, `C-b d` comes back to a line that attaches again at Enter or in 15 s (also after a dropped link). A host that was down at the start gets a window named after it, which attaches its guest once it answers. A window you closed comes back after `tmux kill-session -t fleet` and `fleet` |
+| `fleet` | the only guest attached from this terminal; with several, start the session if needed, then attach (or switch to it from inside tmux) |
+| `fleet attach <guest>` | that guest, attached from this terminal |
+| a guest's window | named after the guest: its `agents` tmux session, attached over ssh, on `dashboard`. `C-b` is the guest's tmux there: its bar lists the agents' windows (with workmux's status icons, and `UNATTENDED` on an unattended one), `C-b w` picks one, `C-b d` comes back to a line that attaches again at Enter or in 15 s (also after a dropped link). A host that was down at the start gets a window named after it, which attaches its guest once it answers. A window you closed comes back after `tmux kill-session -t fleet` and `fleet` |
 | `fleet ls`, `fleet doctor`, `fleet help` | guests, the checks, the rest |
 
 Your own panes show their command and directory on their border; the focused pane's border is blue. The theme is

@@ -2,7 +2,8 @@
 # Stub ssh for tests/fleet.bats: answers from $FLEET_FIXTURES by destination
 # and command, and logs every call to $FLEET_FIXTURES/ssh.log.
 fx=$FLEET_FIXTURES
-echo "ssh $*" >> "$fx/ssh.log"
+# one line a call: the attach's command has several
+printf 'ssh %s\n' "$(tr '\n' ' ' <<<"$*")" >> "$fx/ssh.log"
 I=""
 while [ $# -gt 0 ]; do
   case $1 in -i) I=1; shift 2 ;; -o) shift 2 ;; -t|-T) shift ;; *) break ;; esac

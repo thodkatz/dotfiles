@@ -380,3 +380,12 @@ window mode on workmux, its step 5 slice 1).
    overview, its loop, the hint, the btop pane, the workmux probe and `fleet status` go. A window looks its guest up
    at each attach, so a host down at the start gets a window that attaches once it answers. Rewritten in the decisions
    above, *Discovery*, *Layout*, *Hint*, *Contract consumed*, *Testing*, `README.md` and `AGENTS.md`.
+29. **One guest, one tmux; a dashboard window** (decisions 6, 7) — `folded`. The user, 2026-11-22, on `fleet --local`
+   on nixos: "why we have nested tmux we should have one right? also can we have a window that will be only the
+   workmux dashboard? and when i click to one of the sessions there to be redirected?" With one guest (a host's
+   `--local`, or `fleet attach <guest>`), fleet attaches the guest's tmux from the terminal, with no session of its
+   own; several guests (the laptop's two, two servers on two machines) keep a window per guest, which nests by
+   necessity. The attach first gives the guest's `agents` session a window `dashboard` running `workmux dashboard` in
+   a loop, and opens on it. Tried on agentvm-repos (a grouped session and a client of a private server, so no one
+   else's view moved): Enter on a row moved that client to the agent's window, and the dashboard exited, hence the
+   loop. Rewritten in `README.md`, `AGENTS.md` and `fleet help`.
