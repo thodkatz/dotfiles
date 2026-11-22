@@ -10,7 +10,7 @@ setup() {
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.local/bin/claude-powerline
   mkdir -p "$HOME"
   export AGENT_SL_PLAIN="[Fable 5.2] ctx 42k/150k (28%)"
-  unset AGENT_SL_CTX AGENT_SL_BUDGET AGENT_SL_INBOX
+  unset AGENT_SL_CTX AGENT_SL_BUDGET
   ARROW=$'\xee\x82\xb0'
 }
 
@@ -43,15 +43,6 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
 @test "a count with a leading zero is read as decimal" {
   AGENT_SL_CTX=042000 AGENT_SL_BUDGET=150000 run render
   [ "$(plain_text "$output")" = " weekly $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW" ]
-}
-
-@test "the inbox box shows only over 0, after the budget box" {
-  AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 AGENT_SL_INBOX=0 run render
-  [[ $output != *inbox* ]]
-  AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 AGENT_SL_INBOX=2 run render
-  [ "$(plain_text "$output")" = " weekly $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW inbox 2 $ARROW" ]
-  AGENT_SL_INBOX=3 run render   # no budget given: the inbox box alone
-  [ "$(plain_text "$output")" = " weekly $ARROW inbox 3 $ARROW" ]
 }
 
 @test "with nothing of ours to show, claude-powerline's line is printed as it came" {
@@ -93,9 +84,9 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
 
 @test "a multi-line powerline keeps its lines, ours joined onto the last" {
   two=$'first line\n'$("$ROOT/tests/stub/claude-powerline" </dev/null)
-  STUB_PL_OUT=$two AGENT_SL_INBOX=1 run render
+  STUB_PL_OUT=$two AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 run render
   [ "${lines[0]}" = "first line" ]
-  [ "$(plain_text "${lines[1]}")" = " weekly $ARROW inbox 1 $ARROW" ]
+  [ "$(plain_text "${lines[1]}")" = " weekly $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW" ]
 }
 
 @test "without claude-powerline: the plain line, or a failure when there is none" {
@@ -110,8 +101,8 @@ plain_text() { sed 's/\x1b\[[0-9;]*m//g' <<<"$1"; }
 @test "claude-powerline off the PATH is found in ~/.local/bin, where README's npm line puts it" {
   mkdir -p "$HOME/.local/bin"
   ln -s "$ROOT/tests/stub/claude-powerline" "$HOME/.local/bin/claude-powerline"
-  PATH=$NO_PL_PATH AGENT_SL_INBOX=1 run render
-  [ "$(plain_text "$output")" = " weekly $ARROW inbox 1 $ARROW" ]
+  PATH=$NO_PL_PATH AGENT_SL_CTX=42000 AGENT_SL_BUDGET=150000 run render
+  [ "$(plain_text "$output")" = " weekly $ARROW ctx ██░░░░░░░░ 42k/150k $ARROW" ]
 }
 
 @test "claude-powerline failing or printing nothing: the plain line" {

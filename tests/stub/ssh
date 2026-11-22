@@ -2,45 +2,20 @@
 # Stub ssh for tests/fleet.bats: answers from $FLEET_FIXTURES by destination
 # and command, and logs every call to $FLEET_FIXTURES/ssh.log.
 fx=$FLEET_FIXTURES
-echo "ssh $*" >> "$fx/ssh.log"
-G="" I=""
+# one line a call: the attach's command has several
+printf 'ssh %s\n' "$(tr '\n' ' ' <<<"$*")" >> "$fx/ssh.log"
+I=""
 while [ $# -gt 0 ]; do
-  case $1 in -i) I=1; shift 2 ;; -o) shift 2 ;; -t|-T) shift ;; -G) G=1; shift ;; *) break ;; esac
+  case $1 in -i) I=1; shift 2 ;; -o) shift 2 ;; -t|-T) shift ;; *) break ;; esac
 done
 dest=${1#*@}; shift
-# ssh -G: the config for a destination; fleet reads its hostname
-[ -z "$G" ] || { echo "user agentvm"; echo "hostname $dest"; exit 0; }
 cmd="$*"
 [ ! -e "$fx/fail-$dest" ] || { echo "ssh: connect to host $dest port 22: Connection timed out" >&2; exit 255; }
 # a guest that trusts only the agentvm key, which ~/.ssh/config doesn't name: only an ssh given -i gets in
 [ ! -e "$fx/needkey-$dest" ] || [ -n "$I" ] || { echo "agentvm@$dest: Permission denied (publickey,keyboard-interactive)." >&2; exit 255; }
 case $cmd in
   'cat /etc/agentvm/projects.json') [ ! -e "$fx/slow-$dest" ] || sleep 2; cat "$fx/projects-$dest.json" ;;
-  'bash -s -- json'|'bash -s -- table')
-    cat >/dev/null
-    [ ! -e "$fx/hang-$dest" ] || exec sleep 600
-    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor
-    elif [ "$cmd" = 'bash -s -- json' ]; then cat "$fx/guest-$dest.json"
-    else echo "table of $dest"; fi ;;
-  'bash -s -- inbox-json')
-    # what the probe script's inbox-json mode prints: the guest's inbox items not closed, a line per key, then
-    # status.sh's JSON (or the no-supervisor marker)
-    cat >/dev/null
-    [ ! -e "$fx/hang-$dest" ] || exec sleep 600
-    echo fleet:inbox
-    for f in "$fx/inbox-$dest"/[0-9]*; do
-      [ -f "$f" ] && ! grep -qx state=closed "$f" && awk -v n="${f##*/}" '{ print n "\t" $0 }' "$f"
-    done
-    echo fleet:status
-    if [ -e "$fx/nosup-$dest" ]; then echo fleet:no-supervisor; exit 0; fi
-    cat "$fx/guest-$dest.json"
-    # then the hops someone watched: <old id><tab><successor id><tab><old's tmux session>
-    echo fleet:hops
-    [ ! -e "$fx/hops-$dest" ] || cat "$fx/hops-$dest" ;;
-  # deck's attach of a remote session: held while $fx/deck-attach names it ("<ip> <id>")
-  *'session attach '*)
-    while [ "$(cat "$fx/deck-attach" 2>/dev/null)" = "$dest ${cmd##* }" ]; do sleep 0.1; done ;;
-  *btop*) exec sleep 600 ;;
-  true|'test -x .local/bin/agent-deck') exit 0 ;;
+  *'tmux -u attach -t =agents'*) exec sleep 600 ;;
+  true|'command -v tmux') [ ! -e "$fx/notmux-$dest" ] ;;
   *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;
 esac

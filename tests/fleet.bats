@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# fleet against a private tmux server and stub ssh/systemctl/ip/agent-deck (tests/stub),
-# answering from a copy of tests/fixtures. Run from the repo root: bats tests/
+# fleet against a private tmux server and stub ssh/ip (tests/stub), answering from a copy of tests/fixtures.
+# Run from the repo root: bats tests/
 
 setup() {
   ROOT=$(cd "$BATS_TEST_DIRNAME/.." && pwd)
@@ -12,9 +12,6 @@ setup() {
   export FLEET_STATE=$BATS_TEST_TMPDIR/state
   export FLEET_TMUX_SOCKET=fleet-test-$$-$BATS_TEST_NUMBER
   export FLEET_TMUX_CONF=/dev/null
-  export FLEET_DECK_CMD=agent-deck-not-in-tests FLEET_DECK_CONFIG=$FLEET_FIXTURES/deck-config.toml
-  export FLEET_DECK_INSTALL=$FLEET_FIXTURES/agent-deck-install
-  export FLEET_NO_LOOP=1 FLEET_OVERVIEW_INTERVAL=3600
   export HOME=$BATS_TEST_TMPDIR/home   # no real ~/.agentvm key leaks in
   mkdir -p "$HOME"
   unset AGENTVM_KEY
@@ -22,14 +19,12 @@ setup() {
 }
 
 teardown() {
-  rm -f "$FLEET_FIXTURES/deck-attach"   # ends a stub TUI's attach
   tmux -L "$FLEET_TMUX_SOCKET" kill-server 2>/dev/null || true
+  # the attach script test's own default server, under its TMUX_TMPDIR
+  [ -z "${GUEST_TMUX:-}" ] || TMUX_TMPDIR=$GUEST_TMUX tmux kill-server 2>/dev/null || true
 }
 
 t() { tmux -L "$FLEET_TMUX_SOCKET" "$@"; }
-
-# The hint without its tmux styles.
-plain() { sed 's/#\[[^]]*\]//g'; }
 
 # Poll up to 5 s until the stub ssh has logged a line matching $1.
 wait_log() {
@@ -61,150 +56,75 @@ wait_log() {
   [ "$output" = $'nixos agentvm-repos 192.168.122.51\nthinkcentre - -' ]
 }
 
-@test "probe script runs the unit's status.sh with its AGENT_SUPERVISE_REPOS, json without the forge (D5)" {
-  run bash -c "'$FLEET' _probe-script | bash -s -- json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json --no-forge" ]
-  run bash -c "'$FLEET' _probe-script | bash -s -- table"
-  [ "$output" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=" ]
-}
+# --- the session (layout E) --------------------------------------------------
 
-@test "probe script with no unit prints the no-supervisor marker (D5)" {
-  touch "$FLEET_FIXTURES/unit-missing"
-  run bash -c "'$FLEET' _probe-script | bash -s -- json"
-  [ "$status" -eq 0 ]
-  [ "$output" = "fleet:no-supervisor" ]
-}
-
-@test "probe script inbox-json: the inbox's items not closed, a line per key, then status.sh's JSON, then the hops" {
-  export XDG_STATE_HOME=$BATS_TEST_TMPDIR/xdg
-  mkdir -p "$XDG_STATE_HOME/agent-sessions"
-  cp -r "$FLEET_FIXTURES/inbox-192.168.123.51" "$XDG_STATE_HOME/agent-sessions/inbox"
-  echo 3 > "$XDG_STATE_HOME/agent-sessions/inbox/.next"
-  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
-  [ "$status" -eq 0 ]
-  [ "${lines[0]}" = fleet:inbox ]
-  [ "${lines[1]}" = $'21\topened=1794100000' ]
-  [ "$(grep -c $'^21\t' <<<"$output")" -eq 12 ]
-  ! grep -q $'^20\t' <<<"$output"
-  [ "${lines[13]}" = fleet:status ]
-  [ "${lines[14]}" = "repos=/workspace/a /workspace/b tmpdir=/var/tmp args=--json --no-forge" ]
-  [ "${lines[15]}" = fleet:hops ]
-  [ "${#lines[@]}" -eq 16 ]
-  touch "$FLEET_FIXTURES/unit-missing"; rm -r "$XDG_STATE_HOME/agent-sessions/inbox"
-  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
-  [ "$output" = $'fleet:inbox\nfleet:status\nfleet:no-supervisor' ]
-}
-
-@test "status: a guest without the unit shows 'no supervisor', exit 0 (D5)" {
-  touch "$FLEET_FIXTURES/nosup-192.168.123.51"
-  run "$FLEET" status agentvm-thinkrepos
-  [ "$status" -eq 0 ]
-  [ "$output" = "no supervisor" ]
-  run "$FLEET" status agentvm-repos
-  [ "$output" = "table of 192.168.122.51" ]
-}
-
-@test "status: a hung status.sh times out as unreachable" {
-  touch "$FLEET_FIXTURES/hang-192.168.122.51"
-  FLEET_PROBE_TIMEOUT=1 run "$FLEET" status agentvm-repos
-  [ "$status" -eq 0 ]
-  [ "$output" = unreachable ]
-}
-
-@test "status: an unknown guest dies with 'no guest'" {
-  run "$FLEET" status nope
-  [ "$status" -eq 1 ]
-  [ "$output" = "fleet: no guest nope" ]
-}
-
-# --- the session (layout C, agent-methodology D20) -------------------------
-
-@test "fleet start makes the deck and overview windows only" {
-  export FLEET_DECK_CMD=agent-deck
+@test "fleet start makes a window per guest, named after it, and nothing else" {
   run "$FLEET" up
   [ "$status" -eq 0 ]
-  run t list-windows -t =fleet -F '#W|#{window_panes}|#{@fleet-deck}'
-  [ "$output" = $'deck|1|1\noverview|2|' ]
-  [ "$(t show -gv @fleet-booted-fleet)" = c ]
+  run t list-windows -t =fleet -F '#W|#{window_panes}|#{@fleet-guest}'
+  [ "$output" = $'agentvm-repos|1|agentvm-repos · nixos\nagentvm-thinkrepos|1|agentvm-thinkrepos · thinkcentre' ]
+  [ "$(t show -gv @fleet-booted-fleet)" = e ]
   [ "$(t show -t =fleet: -v @fleet-mode)" = remote ]
-  # no agent-deck: the overview alone, and fleet says why
-  t kill-server
-  FLEET_DECK_CMD=agent-deck-not-in-tests run "$FLEET" up
+}
+
+@test "up: a guest's window attaches its agents session over the guest's ssh, unshared" {
+  "$FLEET" up
+  [[ "$(t display -p -t =fleet:agentvm-thinkrepos '#{pane_start_command}')" == *fleet*_attach*thinkcentre*agentvm-thinkrepos* ]]
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach -t =agents'
+  grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q 'ssh -t -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new agentvm@192.168.123.51'
+  ! grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
+}
+
+@test "attach: after the attach ends, it says so and attaches again at Enter" {
+  # the stub's attach holds; a failing one returns at once
+  touch "$FLEET_FIXTURES/fail-192.168.122.51"
+  "$FLEET" up
+  for _ in $(seq 50); do t capture-pane -p -t =fleet:agentvm-repos | grep -q "not attached" && break; sleep 0.1; done
+  t capture-pane -p -t =fleet:agentvm-repos | grep -qx "\[fleet\] agentvm-repos not attached; Enter or 15 s attaches again"
+  n=$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")
+  t send-keys -t =fleet:agentvm-repos Enter
+  for _ in $(seq 50); do [ "$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ] && break; sleep 0.1; done
+  [ "$(grep -c 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log")" -gt "$n" ]
+}
+
+@test "attach: a host down at the start gets a window named after it, which attaches its guest once it answers" {
+  touch "$FLEET_FIXTURES/fail-thinkcentre"
+  run "$FLEET" up
   [ "$status" -eq 0 ]
-  [[ "$output" == *"fleet: agent-deck-not-in-tests is not on PATH, so no deck window: install it with $FLEET_DECK_INSTALL, then run fleet again"* ]]
-  run t list-windows -t =fleet -F '#W'
-  [ "$output" = overview ]
+  run t list-windows -t =fleet -F '#W|#{@fleet-guest}'
+  [ "$output" = $'agentvm-repos|agentvm-repos · nixos\nthinkcentre|thinkcentre' ]
+  for _ in $(seq 50); do t capture-pane -p -t =fleet:thinkcentre | grep -q "not attached" && break; sleep 0.1; done
+  t capture-pane -p -t =fleet:thinkcentre | grep -qx "\[fleet\] thinkcentre not attached; Enter or 15 s attaches again"
+  rm "$FLEET_FIXTURES/fail-thinkcentre"
+  t send-keys -t =fleet:thinkcentre Enter
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach -t =agents'
 }
 
-@test "up: a session built without deck gets the deck window once deck is installed, and keeps it after" {
-  "$FLEET" up
-  export FLEET_DECK_CMD=agent-deck
-  t new-window -d -t =fleet: -n mine 'sleep 600'
-  "$FLEET" up
-  run t list-windows -t =fleet -F '#W|#{@fleet-deck}'
-  [ "$output" = $'deck|1\noverview|' ]
-  t new-window -d -t =fleet: -n mine 'sleep 600'
-  "$FLEET" up
-  t list-windows -t =fleet -F '#W' | grep -qx mine
-  # a deck window closed later (TUI quit, a deck open elsewhere) is put back first, the other windows kept
-  t kill-window -t =fleet:deck
-  "$FLEET" up
-  run t list-windows -t =fleet -F '#W|#{@fleet-deck}'
-  [ "$output" = $'deck|1\noverview|\nmine|' ]
-  # and only once: a deck window there is left alone
-  "$FLEET" up
-  run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'deck\noverview\nmine' ]
-  # without deck on PATH, nothing is added
-  t kill-window -t =fleet:deck
-  FLEET_DECK_CMD=agent-deck-not-in-tests "$FLEET" up
-  run t list-windows -t =fleet -F '#W'
-  [ "$output" = $'overview\nmine' ]
-}
-
-@test "up: window overview runs its loop, the first guest's btop to its right" {
-  "$FLEET" up
-  run t list-panes -t =fleet:overview -F '#{@fleet-overview}|#{@fleet-res-guest}|#{pane_left}|#{pane_width}'
-  [ "${lines[0]}" = '1||0|127' ]
-  [ "${lines[1]}" = '|agentvm-repos|128|72' ]
-  [[ "$(t list-panes -t =fleet:overview -F '#{pane_start_command}' | head -1)" == *_overview*fleet* ]]
-  wait_log 'agentvm@192.168.122.51 .*btop'
-  grep -q 'ssh -t .*agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
-}
-
-@test "deck: its TUI starts outside fleet's tmux, allowed to run inside one" {
-  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
-  mkdir -p "${FLEET_DECK_CMD%/*}"
-  printf '#!/bin/sh\nenv > "$0.env"; exec sleep 600\n' > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
-  "$FLEET" up
-  # deck refuses to start inside tmux without the allowance, and with TMUX set looks for its sessions on fleet's server
-  for _ in $(seq 25); do [ -s "$FLEET_DECK_CMD.env" ] && break; sleep 0.2; done
-  grep -qx AGENT_DECK_ALLOW_OUTER_TMUX=1 "$FLEET_DECK_CMD.env"
-  ! grep -q '^TMUX=' "$FLEET_DECK_CMD.env"
-  [[ "$(t display -p -t =fleet:deck '#{pane_start_command}')" == *deckbin/agent-deck* ]]
-}
-
-@test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored, and stops an old hint loop (D13)" {
+@test "up: keeps its own session; rebuilds one an older fleet built or resurrect restored (D13)" {
   "$FLEET" up
   t new-window -d -t =fleet: -n mine 'sleep 600'
   "$FLEET" up
   t list-windows -t =fleet -F '#W' | grep -qx mine
-  # an older fleet's session (marker 1) and its hint loop
-  t set -g @fleet-booted-fleet 1
-  sleep 600 & old=$!
-  echo "$old 5" > "$FLEET_STATE/fleet/hintloop.pid"
+  # an older fleet's session (layout d, its overview)
+  t set -g @fleet-booted-fleet d
   "$FLEET" up
-  ! t list-windows -t =fleet -F '#W' | grep -qx mine
-  ! kill -0 "$old" 2>/dev/null
-  [ ! -e "$FLEET_STATE/fleet/hintloop.pid" ]
-  [ "$(t show -gv @fleet-booted-fleet)" = c ]
+  ! t list-windows -t =fleet -F '#W' | grep -qx mine || false
+  [ "$(t show -gv @fleet-booted-fleet)" = e ]
   # resurrect's (no marker)
   t new-window -d -t =fleet: -n mine 'sleep 600'
   t set -gu @fleet-booted-fleet
   "$FLEET" up
   run t list-windows -t =fleet -F '#W'
-  [ "$output" = overview ]
+  [ "$output" = $'agentvm-repos\nagentvm-thinkrepos' ]
+}
+
+@test "up: an older fleet's session isn't rebuilt from inside it, which would end the pane fleet runs in" {
+  "$FLEET" up
+  t set -g @fleet-booted-fleet d
+  t new-window -d -t =fleet: -n mine "'$FLEET' up > '$BATS_TEST_TMPDIR/out' 2>&1; echo \$? >> '$BATS_TEST_TMPDIR/out'; sleep 600"
+  for _ in $(seq 50); do [ -s "$BATS_TEST_TMPDIR/out" ] && grep -qx 1 "$BATS_TEST_TMPDIR/out" && break; sleep 0.1; done
+  [ "$(cat "$BATS_TEST_TMPDIR/out")" = $'fleet: fleet is from an older fleet and is rebuilt, which would end this pane: run fleet from another session, or detach first\n1' ]
+  t list-windows -t =fleet -F '#W' | grep -qx mine
 }
 
 @test "up --local: session fleet-<host>, this host's guests only (D4, D6)" {
@@ -212,468 +132,147 @@ wait_log() {
   run "$FLEET" --local up
   [ "$status" -eq 0 ]
   run t list-windows -t =fleet-nixos -F '#W'
-  [ "$output" = overview ]
+  [ "$output" = agentvm-repos ]
   [ "$(t show -t =fleet-nixos: -v @fleet-mode)" = local ]
   ! grep -q 'theo@' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "up: one unreachable guest never fails it (D9)" {
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  run "$FLEET" up
-  [ "$status" -eq 0 ]
-  run "$FLEET" status agentvm-thinkrepos
-  [ "$output" = unreachable ]
-}
-
-@test "fleet sync is unknown" {
-  run "$FLEET" sync
-  [ "$status" -eq 2 ]
-  [[ "$output" == 'usage: fleet'* ]]
-}
-
-# --- agent-deck-config -------------------------------------------------------
-
-gen() { "$ROOT/agent-deck/dot-local/bin/agent-deck-config" "$@"; }
-# A config.toml as a NixOS switch or deck itself left it: a stale shared key, deck's own keys and table, a guest gone.
-stale_config() {
-  cat > "$1" <<'TOML'
-# an old header comment
-[updates]
-  auto_update = true
-  sweep_remotes = false
-
-[remotes.gone]
-  host = "agentvm@192.168.9.9"
-
-[claude]
-dangerous_mode = false
-command = "deck-claude"
-
-[instances]
-allow_multiple = true
-TOML
-}
-GEN_WANT='# Generated by agent-deck-config from settings.toml and remotes.toml, next to this file: edit those, not this.
-# The shared settings, as agent-deck/dot-config/agent-deck/settings.toml holds them.
-[updates]
-  auto_update = false
-  check_enabled = false
-  sweep_remotes = false
-
-[claude]
-dangerous_mode = true
-command = "deck-claude"
-
-[instances]
-allow_multiple = true
-
-# This machine'"'"'s guests.
-[remotes.thinkrepos]
-  host = "agentvm@192.168.123.51"
-  agent_deck_path = "/home/agentvm/.local/bin/agent-deck"
-
-[remotes.repos]
-  host = "agentvm@192.168.122.51"
-  agent_deck_path = "/home/agentvm/.local/bin/agent-deck"'
-
-@test "agent-deck-config: settings win, deck's own keys and tables kept, remotes replaced with remotes.toml's" {
-  c=$FLEET_FIXTURES/config.toml
-  stale_config "$c"
-  run gen "$c"
-  [ "$status" -eq 0 ]
-  run cat "$c"
-  [ "$output" = "$GEN_WANT" ]
-}
-
-@test "agent-deck-config: idempotent, and an unchanged config is not rewritten (deck reloads on its mtime)" {
-  c=$FLEET_FIXTURES/config.toml
-  stale_config "$c"
-  gen "$c"
-  touch -d '2000-01-01' "$c"
-  run gen --check "$c"
-  [ "$status" -eq 0 ]
-  gen "$c"
-  [ "$(cat "$c")" = "$GEN_WANT" ]
-  [ "$(stat -c %Y "$c")" = "$(date -d 2000-01-01 +%s)" ]
-}
-
-@test "agent-deck-config: a multi-line value and each [[array]] table of deck's are kept whole" {
-  c=$FLEET_FIXTURES/config.toml
-  cat > "$c" <<'TOML'
-[claude]
-args = [
-  "--model=opus",
-  "x",
-]
-note = """
-a = b
-[not a table]
-"""
-
-[[mcp]]
-name = "a"
-
-[[mcp]]
-name = "b"
-TOML
-  gen "$c"
-  run sed -n '/^\[claude\]/,/^name = "b"/p' "$c"
-  [ "$output" = '[claude]
-dangerous_mode = true
-args = [
-  "--model=opus",
-  "x",
-]
-note = """
-a = b
-[not a table]
-"""
-
-[[mcp]]
-name = "a"
-
-[[mcp]]
-name = "b"' ]
-  run gen --check "$c"
-  [ "$status" -eq 0 ]
-}
-
-@test "agent-deck-config: the config is readable as any other (0644 under umask 022)" {
-  c=$FLEET_FIXTURES/config.toml
-  (umask 022; gen "$c")
-  [ "$(stat -c %a "$c")" = 644 ]
-}
-
-@test "agent-deck-config: no remotes.toml, no remotes; no config.toml, made from the two" {
-  c=$FLEET_FIXTURES/config.toml
-  stale_config "$c"
-  rm "$FLEET_FIXTURES/remotes.toml"
-  gen "$c"
-  ! grep -q remotes "$c"
-  grep -qx 'allow_multiple = true' "$c"
-  rm "$c"
-  gen "$c"
-  [ "$(cat "$c")" = "$(head -n 1 <<<"$GEN_WANT"; cat "$FLEET_FIXTURES/settings.toml")" ]
-}
-
-@test "agent-deck-config: replaces a stowed link with a file, the link's target untouched" {
-  c=$FLEET_FIXTURES/config.toml
-  stale_config "$FLEET_FIXTURES/tracked.toml"
-  ln -s tracked.toml "$c"
-  gen "$c"
-  [ ! -L "$c" ]
-  [ "$(cat "$c")" = "$GEN_WANT" ]
-  grep -qx '  auto_update = true' "$FLEET_FIXTURES/tracked.toml"
-}
-
-@test "agent-deck-config: --check names a stale or missing config (1), no settings.toml fails (2)" {
-  c=$FLEET_FIXTURES/config.toml
-  stale_config "$c"
-  run gen --check "$c"
+@test "up: no guest at all is said, and no session" {
+  echo '{}' > "$FLEET_FIXTURES/projects-nixos.json"
+  AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos run "$FLEET" --local up
   [ "$status" -eq 1 ]
-  [ "$output" = "$c is out of date with settings.toml and remotes.toml" ]
-  grep -qx '  auto_update = true' "$c"
-  rm "$c"
-  run gen --check "$c"
+  [[ "$output" == *"fleet: no guests: $FLEET_FIXTURES/projects-nixos.json lists none" ]]
+  ! t has-session -t =fleet-nixos 2>/dev/null
+}
+
+@test "fleet sync, status and hint are unknown" {
+  for c in sync status hint; do
+    run "$FLEET" "$c"
+    [ "$status" -eq 2 ]
+    [[ "$output" == 'usage: fleet'* ]]
+  done
+}
+
+# --- the attach: one guest from this terminal, the dashboard window ---------------
+
+@test "attach script: the agents session gets one dashboard window, first, workmux's dashboard again after each jump" {
+  export GUEST_TMUX=$BATS_TEST_TMPDIR/tt TMUX_TMPDIR=$BATS_TEST_TMPDIR/tt
+  mkdir -p "$TMUX_TMPDIR"
+  # no tmux server, then one without the agents session: said plainly, nothing made
+  run bash -c "'$FLEET' _attach-script | bash"
   [ "$status" -eq 1 ]
-  [ "$output" = "no $c" ]
-  rm "$FLEET_FIXTURES/settings.toml"
-  run gen "$c"
-  [ "$status" -eq 2 ]
-  [ "$output" = "agent-deck-config: no $FLEET_FIXTURES/settings.toml" ]
-  [ ! -e "$c" ]
+  [ "$output" = "no agents on $(hostname) yet: its tmux has no session agents (methodology next starts one)" ]
+  ! tmux has-session 2>/dev/null || false
+  tmux new-session -d -s other 'sleep 600'
+  run bash -c "'$FLEET' _attach-script | bash"
+  [ "$status" -eq 1 ] && [[ "$output" == "no agents on "* ]]
+  ! tmux has-session -t =agents 2>/dev/null || false
+  tmux new-session -d -s agents -n bash 'sleep 600'
+  tmux new-window -d -t =agents: -n wm-a 'sleep 600'
+  for _ in 1 2; do
+    # no terminal here, so the attach itself fails; the window is made first, once, and swapped into the first place
+    run bash -c "'$FLEET' _attach-script | bash"
+    run tmux list-windows -t =agents -F '#I #W'
+    [ "$output" = $'0 dashboard\n1 wm-a\n2 bash' ]
+  done
+  [[ "$(tmux display -p -t =agents:dashboard '#{pane_start_command}')" == *'while :; do '*'workmux dashboard || sleep 5; done'* ]]
 }
 
-@test "agent-deck-config: the default config is \$XDG_CONFIG_HOME/agent-deck/config.toml" {
-  export XDG_CONFIG_HOME=$BATS_TEST_TMPDIR/xdg
-  mkdir -p "$XDG_CONFIG_HOME/agent-deck"
-  cp "$FLEET_FIXTURES"/{settings,remotes}.toml "$XDG_CONFIG_HOME/agent-deck/"
-  gen
-  grep -qx '\[remotes.repos\]' "$XDG_CONFIG_HOME/agent-deck/config.toml"
-}
-
-@test "up: builds deck's config before the deck window starts, and again at each fleet" {
-  # a deck that copies the config it finds as it starts
-  export FLEET_DECK_CMD=$BATS_TEST_TMPDIR/deckbin/agent-deck
-  mkdir -p "${FLEET_DECK_CMD%/*}"
-  printf '#!/bin/sh\ncp "%s" "$0.cfg"; exec sleep 600\n' "$FLEET_DECK_CONFIG" > "$FLEET_DECK_CMD"; chmod +x "$FLEET_DECK_CMD"
-  stale_config "$FLEET_DECK_CONFIG"
-  "$FLEET" up
-  for _ in $(seq 25); do [ -s "$FLEET_DECK_CMD.cfg" ] && break; sleep 0.2; done
-  [ "$(cat "$FLEET_DECK_CMD.cfg")" = "$GEN_WANT" ]
-  printf '\n[hotkeys]\nswitch_session = "ctrl+s"\n' >> "$FLEET_FIXTURES/settings.toml"
-  "$FLEET" up
-  grep -qx 'switch_session = "ctrl+s"' "$FLEET_DECK_CONFIG"
-  # sources that fail leave deck the config it has, and fleet still starts
-  rm "$FLEET_FIXTURES/settings.toml"
-  t kill-server
-  run "$FLEET" up
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"agent-deck-config: no $FLEET_FIXTURES/settings.toml"* ]]
-  [[ "$output" == *"fleet: deck keeps $FLEET_DECK_CONFIG as it is"* ]]
-  grep -qx 'switch_session = "ctrl+s"' "$FLEET_DECK_CONFIG"
-  t list-windows -t =fleet -F '#W' | grep -qx deck
-  # no deck, no config built
-  rm "$FLEET_DECK_CONFIG"
-  t kill-server
-  FLEET_DECK_CMD=agent-deck-not-in-tests "$FLEET" up
-  [ ! -e "$FLEET_DECK_CONFIG" ]
-}
-
-# --- window overview ---------------------------------------------------------
-
-OV_REPOS=$'agentvm-repos · nixos\n  (no open items)\n  status: 4 rows
-    main  attended  working
-    main  unattended  idle
-    nixed  unattended  -  gated #4
-    impl/x  unattended  asking  stall'
-OV_THINK_ITEM=$'agentvm-thinkrepos · thinkcentre\n  ✉ #21 death impl/x-1\n      cd /workspace/agent-methodology/.claude/worktrees/impl-x-1 && /home/agentvm/.local/share/agent-methodology/gen/b80f91c6/shared/methodology next --resume /workspace/agent-methodology/.claude/worktrees/impl-x-1 --here'
-OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
-
-@test "overview lists both guests' open items and status rows" {
-  run "$FLEET" _overview fleet --once
-  [ "$status" -eq 0 ]
-  [ "$output" = "$OV_REPOS"$'\n\n'"$OV_THINK_ITEM"$'\n'"$OV_THINK_ROWS" ]
-  # one ssh per guest, over the shared connection
-  [ "$(grep -c 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log")" -eq 1 ]
-  grep 'agentvm@192.168.123.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster=auto
-  # the round also writes the hint
-  [ "$(plain < "$FLEET_STATE/fleet/hint")" = "nixos ●3 ◆1  thinkcentre ●1 ✉1" ]
-}
-
-@test "overview: a row missing fields shows ? and -" {
-  echo '[{"repo": "/workspace/agent-methodology", "state": "running"}]' > "$FLEET_FIXTURES/guest-192.168.123.51.json"
-  run "$FLEET" _overview fleet --once
-  [ "$status" -eq 0 ]
-  [[ "$output" == *$'  status: 1 row\n    ?  ?  -' ]]
-}
-
-@test "overview: an item with no continue shows what it needs" {
-  sed -i '/^continue=/d' "$FLEET_FIXTURES/inbox-192.168.123.51/21"
-  run "$FLEET" _overview fleet --once
-  [[ "$output" == *$'✉ #21 death impl/x-1\n      needs: The session died (state running, exit none).\n'* ]]
-}
-
-@test "overview says no open items" {
-  rm -r "$FLEET_FIXTURES/inbox-192.168.123.51"
-  run "$FLEET" _overview fleet --once
-  [ "$status" -eq 0 ]
-  [ "$output" = "$OV_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  (no open items)\n'"$OV_THINK_ROWS" ]
-}
-
-@test "overview marks an unreachable guest, an unreachable host and a guest with no supervisor" {
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  run "$FLEET" _overview fleet --once
-  [ "$status" -eq 0 ]
-  [ "$output" = "$OV_REPOS"$'\n\nagentvm-thinkrepos · thinkcentre\n  ✗ unreachable' ]
-  rm "$FLEET_FIXTURES/fail-192.168.123.51"; touch "$FLEET_FIXTURES/fail-thinkcentre" "$FLEET_FIXTURES/nosup-192.168.122.51"
-  run "$FLEET" _overview fleet --once
-  [ "$output" = $'agentvm-repos · nixos\n  (no open items)\n  status: no supervisor\n\nthinkcentre\n  ✗ unreachable' ]
-}
-
-# --- the hint ----------------------------------------------------------------
-
-@test "hint counts live, asking, open from status --json's activity" {
-  jq '[.[0], .[0] + {deck_id: "a2", activity: "asking"}, .[0] + {deck_id: "a3", activity: "idle"},
-    .[0] + {deck_id: "a4", activity: "quota"}, .[0] + {deck_id: "a5", activity: ""}, (.[0] + {deck_id: "a6"} | del(.activity))]' \
-    "$FLEET_FIXTURES/guest-192.168.123.51.json" > "$FLEET_FIXTURES/x"
-  mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.123.51.json"
-  "$FLEET" up
-  run "$FLEET" hint -t fleet
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ●3 ◆1 ✉1" ]
-  [[ "$output" == *"#[fg=#83a598]✉1#[default]"* ]]
-}
-
-@test "hint: counts per host, --refresh rediscovers (D10)" {
-  "$FLEET" up
-  jq '. + [.[0] + {deck_id: "d-nixed-3", activity: "asking"}]' "$FLEET_FIXTURES/guest-192.168.122.51.json" > "$FLEET_FIXTURES/x"
-  mv "$FLEET_FIXTURES/x" "$FLEET_FIXTURES/guest-192.168.122.51.json"
-  run "$FLEET" hint -t fleet --refresh
-  [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●4 ◆2  thinkcentre ●1 ✉1" ]
-  run "$FLEET" hint -t fleet
-  [ "$output" = "#[fg=#8ec07c]nixos#[default] #[fg=#b8bb26]●4#[default] #[fg=#d3869b]◆2#[default]  #[fg=#fe8019]thinkcentre#[default] #[fg=#b8bb26]●1#[default] #[fg=#83a598]✉1#[default]" ]
-}
-
-@test "hint: an unreachable host shows ✗; no cache prints nothing (D10)" {
-  run "$FLEET" hint -t fleet
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  "$FLEET" up
-  run "$FLEET" hint -t fleet
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ✗" ]
-}
-
-@test "hint from a session fleet did not make shows fleet's" {
-  "$FLEET" up
-  t new-session -d -s mine 'sleep 600'
-  run "$FLEET" hint -t mine --refresh
-  [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆1  thinkcentre ●1 ✉1" ]
-}
-
-@test "hint: a foreign session under --local falls back to fleet-<host>, not fleet (D6, D10)" {
+@test "attach: the only guest is attached from this terminal, its agents session opening on the dashboard; no fleet session" {
   export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
-  "$FLEET" --local up
-  t new-session -d -s mine 'sleep 600'
-  run "$FLEET" hint -t mine
-  [ "$status" -eq 0 ]
-  [ "$(plain <<<"$output")" = "nixos ●3 ◆1" ]
+  run timeout 3 "$FLEET" --local
+  [ "$status" -eq 124 ]   # the stub's attach holds, as a real one does
+  grep '^ssh -t .*agentvm@192.168.122.51 ' "$FLEET_FIXTURES/ssh.log" | grep -qF 'tmux -u attach -t =agents \; select-window -t =agents:dashboard'
+  ! t has-session -t =fleet-nixos 2>/dev/null
 }
 
-@test "hint: nothing once the session is gone, though its cache remains (D10)" {
-  "$FLEET" up
-  t new-session -d -s mine 'sleep 600'
-  [ -n "$("$FLEET" hint -t mine)" ]
-  t kill-session -t =fleet
-  [ -r "$FLEET_STATE/fleet/hint" ]
-  run "$FLEET" hint -t mine
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
+@test "attach: a host that is down still counts, so two hosts with one down get the session, not a single attach" {
+  touch "$FLEET_FIXTURES/fail-thinkcentre"
+  run timeout 3 "$FLEET"   # no terminal here, so its own tmux attach fails; the session is made first
+  run t list-windows -t =fleet -F '#W'
+  [ "$output" = $'agentvm-repos\nthinkcentre' ]
+}
+
+@test "attach GUEST: that guest from this terminal, of several; an unknown one dies" {
+  run timeout 3 "$FLEET" attach agentvm-thinkrepos
+  [ "$status" -eq 124 ]
+  grep -q 'agentvm@192.168.123.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q 'agentvm@192.168.122.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log" || false
+  ! t has-session -t =fleet 2>/dev/null || false
+  run "$FLEET" attach nope
+  [ "$status" -eq 1 ]
+  [ "$output" = "fleet: no guest nope" ]
 }
 
 # --- doctor and ssh ----------------------------------------------------------
 
-@test "doctor: names the guest whose ssh fails, exits 1 (D14)" {
+@test "doctor: names the guest whose ssh fails, with ssh's own reason, and one without tmux; exits 1 (D14)" {
   touch "$FLEET_FIXTURES/fail-192.168.123.51"
   run "$FLEET" doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *'FAIL  ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
-  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck'* ]]
-  # a guest no ssh reaches fails once, not again as the deck's
-  [[ "$output" != *'deck ssh agentvm@192.168.123.51'* ]]
+  [[ "$output" == *$'FAIL  ssh agentvm@192.168.123.51 (agentvm-thinkrepos): no ssh, or no tmux there\n      ssh: connect to host 192.168.123.51 port 22: Connection timed out'* ]]
+  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): tmux'* ]]
+  rm "$FLEET_FIXTURES/fail-192.168.123.51"; touch "$FLEET_FIXTURES/notmux-192.168.122.51"
+  run "$FLEET" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'FAIL  ssh agentvm@192.168.122.51 (agentvm-repos): no ssh, or no tmux there'* ]]
 }
 
 @test "doctor: all good exits 0 (D14)" {
-  export FLEET_DECK_CMD=agent-deck
   run "$FLEET" doctor
   [ "$status" -eq 0 ]
   [[ "$output" != *FAIL* ]]
-  [[ "$output" == *"ok    agent-deck v1.0.0"* ]]
-  [[ "$output" == *"ok    agent-deck config $FLEET_DECK_CONFIG"* ]]
-  [[ "$output" == *'ok    deck ssh agentvm@192.168.122.51 (agentvm-repos)'* ]]
-}
-
-@test "doctor: a guest only fleet's key reaches fails the deck's ssh, which reads ~/.ssh/config alone" {
-  export FLEET_DECK_CMD=agent-deck AGENTVM_KEY=/keys/agentvm
-  touch "$FLEET_FIXTURES/needkey-192.168.122.51"
-  run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *'ok    ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck'* ]]
-  [[ "$output" == *'FAIL  deck ssh agentvm@192.168.122.51 (agentvm-repos): agent-deck has no -i, so ~/.ssh/config must name the key: IdentityFile /keys/agentvm'* ]]
-  [[ "$output" == *'      agentvm@192.168.122.51: Permission denied (publickey,keyboard-interactive).'* ]]
-  [[ "$output" == *'ok    deck ssh agentvm@192.168.123.51 (agentvm-thinkrepos)'* ]]
-  # the deck's ssh is plain: BatchMode, no -i, no accept-new
-  grep -q -- '-o BatchMode=yes -o ConnectTimeout=5 -o ControlPath=none agentvm@192.168.122.51 true' "$FLEET_FIXTURES/ssh.log"
-  # no deck window, nothing of the deck's to check
-  FLEET_DECK_CMD='' run "$FLEET" doctor
-  [ "$status" -eq 0 ]
-  [[ "$output" != *'deck ssh'* ]]
-}
-
-@test "doctor: this machine's agent-deck, missing, off the pin or without its config, fails and names the fix" {
-  run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  agent-deck-not-in-tests not on PATH, so no deck window: install it with $FLEET_DECK_INSTALL"* ]]
-  export FLEET_DECK_CMD=agent-deck
-  echo 0.9.0 > "$FLEET_FIXTURES/deck-version"
-  run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  agent-deck: Agent Deck v0.9.0, pinned v1.0.0: run $FLEET_DECK_INSTALL"* ]]
-  echo 1.0.0 > "$FLEET_FIXTURES/deck-version"
-  # deck's config: out of date with its two sources, or missing; and the sources missing
-  echo '  auto_update = true' >> "$FLEET_DECK_CONFIG"
-  run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  gen=$ROOT/agent-deck/dot-local/bin/agent-deck-config
-  [[ "$output" == *"FAIL  $FLEET_DECK_CONFIG is out of date with settings.toml and remotes.toml: run fleet, or $gen"* ]]
-  rm "$FLEET_DECK_CONFIG"
-  run "$FLEET" doctor
-  [[ "$output" == *"FAIL  no $FLEET_DECK_CONFIG: run fleet, or $gen"* ]]
-  rm "$FLEET_FIXTURES/remotes.toml"
-  run "$FLEET" doctor
-  [[ "$output" == *"FAIL  no $FLEET_FIXTURES/remotes.toml: deck has no guests as remotes (README)"* ]]
-  rm "$FLEET_FIXTURES/settings.toml"
-  run "$FLEET" doctor
-  [[ "$output" == *"FAIL  no agent-deck settings $FLEET_FIXTURES/settings.toml (the agent-deck package's, README)"* ]]
-  # FLEET_DECK_CMD empty: no deck wanted, nothing to check
-  FLEET_DECK_CMD='' run "$FLEET" doctor
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"ok    agent-deck: off (FLEET_DECK_CMD empty)"* ]]
-}
-
-@test "doctor: the pin is agent-deck-install's, in the checkout fleet runs from" {
-  unset FLEET_DECK_INSTALL
-  export FLEET_DECK_CMD=agent-deck
-  echo "$(sed -n 's/^version=//p' "$ROOT/agent-deck/dot-local/bin/agent-deck-install")" > "$FLEET_FIXTURES/deck-version"
-  run "$FLEET" doctor
-  [ "$status" -eq 0 ]
-  echo 0.9.0 > "$FLEET_FIXTURES/deck-version"
-  run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"pinned v"*"run $ROOT/agent-deck/dot-local/bin/agent-deck-install"* ]]
-  # no pin to read: a failure, not a silent ok
-  FLEET_DECK_INSTALL=/nonexistent run "$FLEET" doctor
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"FAIL  agent-deck v0.9.0: no pin, /nonexistent unreadable"* ]]
-}
-
-@test "doctor: a failed guest ssh shows ssh's own reason (D14)" {
-  touch "$FLEET_FIXTURES/fail-192.168.123.51"
-  run "$FLEET" doctor
-  [[ "$output" == *$'(agentvm-thinkrepos): no ssh, or no agent-deck there\n      ssh: connect to host 192.168.123.51 port 22: Connection timed out'* ]]
+  [[ "$output" == *'ok    ssh theo@nixos'* ]]
+  [[ "$output" == *'ok    route to 192.168.123.51 via tailscale'* ]]
+  [[ "$output" == *'ok    ssh agentvm@192.168.123.51 (agentvm-thinkrepos): tmux'* ]]
 }
 
 @test "ssh: guests get accept-new, hosts don't; no -i by default" {
-  "$FLEET" status agentvm-repos
-  grep -q 'StrictHostKeyChecking=accept-new agentvm@192.168.122.51 bash -s -- table' "$FLEET_FIXTURES/ssh.log"
-  ! grep -q 'accept-new theo@' "$FLEET_FIXTURES/ssh.log"
+  "$FLEET" doctor
+  grep -q 'StrictHostKeyChecking=accept-new agentvm@192.168.122.51 command -v tmux' "$FLEET_FIXTURES/ssh.log"
+  ! grep -q 'accept-new theo@' "$FLEET_FIXTURES/ssh.log" || false
   ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "ssh: probes and discovery share a connection; the btop pane doesn't" {
+@test "ssh: discovery shares a connection; the attach doesn't" {
   "$FLEET" up
-  wait_log 'agentvm@192.168.122.51 .*btop'
-  grep -q "ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m -o BatchMode=yes .* agentvm@192.168.122.51 bash -s -- inbox-json" "$FLEET_FIXTURES/ssh.log"
-  grep -q "ControlMaster=auto .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
-  ! grep 'btop' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster
+  wait_log 'agentvm@192.168.122.51 .*tmux -u attach'
+  grep -q "ControlMaster=auto -o ControlPath=$FLEET_STATE/ssh/%C -o ControlPersist=10m .* theo@nixos cat /etc/agentvm/projects.json" "$FLEET_FIXTURES/ssh.log"
+  ! grep 'tmux -u attach' "$FLEET_FIXTURES/ssh.log" | grep -q ControlMaster || false
   [ "$(stat -c %a "$FLEET_STATE/ssh")" = 700 ]
 }
 
 @test "ssh: no shared connection with FLEET_SSH_MUX=0, or a socket path past 108 bytes" {
-  FLEET_SSH_MUX=0 "$FLEET" status agentvm-repos
-  ! grep -q ControlMaster "$FLEET_FIXTURES/ssh.log"
-  FLEET_STATE=$BATS_TEST_TMPDIR/$(printf 'x%.0s' $(seq 80)) "$FLEET" status agentvm-repos
+  FLEET_SSH_MUX=0 "$FLEET" ls
+  ! grep -q ControlMaster "$FLEET_FIXTURES/ssh.log" || false
+  FLEET_STATE=$BATS_TEST_TMPDIR/$(printf 'x%.0s' $(seq 80)) "$FLEET" ls
   ! grep -q ControlMaster "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "discovery: reads the hosts at once, in the hosts file's order" {
-  "$FLEET" up
   touch "$FLEET_FIXTURES/slow-nixos" "$FLEET_FIXTURES/slow-thinkcentre"
   start=$(date +%s)
-  "$FLEET" hint -t fleet --refresh >/dev/null
+  run "$FLEET" ls
   [ $(( $(date +%s) - start )) -lt 4 ]
-  [ "$(jq -r '(map(.host) | unique == ["nixos", "thinkcentre"]) and .[0].host == "nixos"' "$FLEET_STATE/fleet/fleet.json")" = true ]
+  [ "$output" = $'nixos agentvm-repos 192.168.122.51\nthinkcentre agentvm-thinkrepos 192.168.123.51' ]
 }
 
-@test "ssh: AGENTVM_KEY is the guests' identity, in the btop pane too" {
+@test "ssh: AGENTVM_KEY is the guests' identity, in the guests' windows too" {
   export AGENTVM_KEY=/keys/agentvm
   "$FLEET" up
-  wait_log 'agentvm@192.168.122.51 .*btop'
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 bash -s -- inbox-json' "$FLEET_FIXTURES/ssh.log"
-  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.122.51 .*btop' "$FLEET_FIXTURES/ssh.log"
+  wait_log 'agentvm@192.168.123.51 .*tmux -u attach'
+  grep -q 'accept-new -i /keys/agentvm agentvm@192.168.123.51 .*tmux -u attach' "$FLEET_FIXTURES/ssh.log"
   ! grep -q -- '-i /keys/agentvm theo@' "$FLEET_FIXTURES/ssh.log"
 }
 
-@test "ssh --local: the host's agentvm key when it exists, in the btop pane too" {
+@test "ssh --local: the host's agentvm key when it exists, in the guest's window too" {
   export AGENTVM_PROJECTS=$FLEET_FIXTURES/projects-nixos.json FLEET_HOSTNAME=nixos
-  "$FLEET" --local status agentvm-repos
-  ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log"
+  "$FLEET" --local doctor
+  ! grep -q -- ' -i ' "$FLEET_FIXTURES/ssh.log" || false
   mkdir -p "$HOME/.agentvm/keys" && touch "$HOME/.agentvm/keys/id_ed25519"
   "$FLEET" --local up
-  wait_log 'agentvm@192.168.122.51 .*btop'
-  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 .*btop" "$FLEET_FIXTURES/ssh.log"
+  wait_log 'agentvm@192.168.122.51 .*tmux -u attach'
+  grep -q -- "-i $HOME/.agentvm/keys/id_ed25519 agentvm@192.168.122.51 .*tmux -u attach" "$FLEET_FIXTURES/ssh.log"
 }
 
 @test "tmux.conf: resurrect's post-save hook drops fleet's sessions from a save" {
@@ -688,107 +287,12 @@ OV_THINK_ROWS=$'  status: 1 row\n    agent-methodology  attended  working'
   [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
 }
 
-# --- hops: the deck TUI follows a viewed hop (D20, Clarification 5) -----------
-
-# fleet with the stub deck, its TUI attached to thinkrepos' d-am-1; one round records the attach.
-deck_up() {
-  export FLEET_DECK_CMD=agent-deck
-  echo "192.168.123.51 d-am-1" > "$FLEET_FIXTURES/deck-attach"
-  "$FLEET" up
-  wait_log 'agentvm@192.168.123.51 agent-deck session attach d-am-1'
-  "$FLEET" _round fleet >/dev/null
-}
-
-# The attached session stops (its hand-off): deck's attach ends, the TUI is back on its list.
-detach() {
-  local i
-  rm -f "$FLEET_FIXTURES/deck-attach"
-  for i in $(seq 50); do pgrep -f 'agent-deck session attach d-am-1' >/dev/null || return 0; sleep 0.1; done
-  return 1
-}
-
-# The hops thinkrepos' probe reports, "<old> <successor> <old's tmux session>" each.
-hops() { printf '%s\t%s\t%s\n' "$@" > "$FLEET_FIXTURES/hops-192.168.123.51"; }
-
-rounds() { "$FLEET" _round fleet >/dev/null && "$FLEET" _round fleet >/dev/null; }
-
-@test "a viewed hop selects its successor in the TUI once" {
-  deck_up
-  [[ "$(cat "$FLEET_STATE/fleet/deck-attached")" == $'192.168.123.51\t'*'session attach d-am-1' ]]
-  detach
-  hops d-am-1 d-am-2 agentdeck_am_1
-  rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
-}
-
-@test "an unviewed hop moves nothing" {
-  # the probe lists only a hop from an archived session marked am.viewed=1
-  echo '[{"deck_id": "d-2", "prev": "d-1"}, {"deck_id": "d-4", "prev": "d-3"}, {"deck_id": "d-6", "prev": "d-5"},
-    {"deck_id": "d-7", "prev": ""}]' > "$FLEET_FIXTURES/status-json"
-  echo '[{"id": "d-1", "archived": true, "tmux_session": "agentdeck_a"}, {"id": "d-3", "archived": true, "tmux_session": "agentdeck_b"},
-    {"id": "d-5", "archived": false, "tmux_session": "agentdeck_c"}]' > "$FLEET_FIXTURES/deck-list.json"
-  printf '%s\n' d-1 d-5 > "$FLEET_FIXTURES/deck-viewed"
-  run bash -c "'$FLEET' _probe-script | bash -s -- inbox-json"
-  [ "$status" -eq 0 ]
-  [ "${output#*fleet:hops$'\n'}" = $'d-1\td-2\tagentdeck_a' ]
-  # so with no hop reported, the TUI stays
-  deck_up
-  detach
-  rounds
-  [ ! -e "$FLEET_FIXTURES/deck.log" ]
-}
-
-@test "a hop this TUI wasn't attached to moves nothing" {
-  deck_up
-  # attached to another session when its old one's hop arrives
-  echo "192.168.123.51 d-am-5" > "$FLEET_FIXTURES/deck-attach"
-  wait_log 'agentvm@192.168.123.51 agent-deck session attach d-am-5'
-  hops d-am-1 d-am-2 agentdeck_am_1
-  rounds
-  # a hop of another session on its guest, and of the same id on another guest
-  rm -f "$FLEET_FIXTURES/deck-attach"
-  for i in $(seq 50); do pgrep -f 'agent-deck session attach d-am-5' >/dev/null || break; sleep 0.1; done
-  hops d-other d-other-2 agentdeck_other
-  printf 'd-am-5\td-am-6\tagentdeck_am_5\n' > "$FLEET_FIXTURES/hops-192.168.122.51"
-  rounds
-  [ ! -e "$FLEET_FIXTURES/deck.log" ]
-}
-
-@test "a hop reported while its attach is still open is followed once it ends" {
-  deck_up
-  hops d-am-1 d-am-2 agentdeck_am_1
-  "$FLEET" _round fleet >/dev/null
-  [ ! -e "$FLEET_FIXTURES/deck.log" ]
-  detach
-  rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
-}
-
-@test "a TUI that left its session live is not moved by its later hop" {
-  deck_up
-  # Ctrl+Q back to the list, d-am-1 still working: the record goes
-  detach
-  "$FLEET" _round fleet >/dev/null
-  hops d-am-1 d-am-2 agentdeck_am_1
-  rounds
-  [ ! -e "$FLEET_FIXTURES/deck.log" ]
-  grep -q 'd-am-1' "$FLEET_STATE/fleet/hops-followed"
-}
-
-@test "a focus that fails is logged, and the hop not tried again" {
-  deck_up
-  detach
-  touch "$FLEET_FIXTURES/deck-fail-focus"
-  hops d-am-1 d-am-2 agentdeck_am_1
-  rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = "agent-deck session focus --remote thinkrepos d-am-2" ]
-  grep -q 'd-am-1: focus --remote thinkrepos d-am-2 failed' "$FLEET_STATE/fleet/follow.log"
-}
-
-@test "two hops in a row are followed in order" {
-  deck_up
-  detach
-  printf 'd-am-1\td-am-2\tagentdeck_am_1\nd-am-2\td-am-3\tagentdeck_am_2\n' > "$FLEET_FIXTURES/hops-192.168.123.51"
-  rounds
-  [ "$(cat "$FLEET_FIXTURES/deck.log")" = $'agent-deck session focus --remote thinkrepos d-am-2\nagent-deck session focus --remote thinkrepos d-am-3' ]
+@test "guest.conf: loads clean on tmux's own keys, the mouse on, windows from 0, the tabs ending in workmux's anchor" {
+  run tmux -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents 'sleep 600'
+  [ "$status" -eq 0 ] && [ -z "$output" ]
+  [ "$(t show -gv prefix)" = C-b ]
+  [ "$(t show -gv mouse)" = on ]
+  [ "$(t show -gv base-index)" = 0 ]
+  [[ "$(t show -gv window-status-format)" == *'#{?window_flags,,} ' ]]
+  [[ "$(t show -gv window-status-current-format)" == *'#{?window_flags,,} ' ]]
 }

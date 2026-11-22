@@ -8,10 +8,9 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo pacman -S stow     # if not already installed
-sudo pacman -S ttf-jetbrains-mono   # alacritty's font
-mkdir -p ~/.config/agent-deck ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
-stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode agent-deck scripts claude
-agent-deck-install      # the pinned Agent Deck (below)
+sudo pacman -S ttf-jetbrains-mono-nerd   # alacritty's font: JetBrains Mono with Nerd Font icons (workmux's)
+mkdir -p ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
+stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode scripts claude
 npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status line's boxes (below); needs npm (Arch: `sudo pacman -S npm`)
 ```
 
@@ -21,21 +20,6 @@ apply just the packages you list, e.g. `stow -t "$HOME" --dotfiles -R git` for a
 The `git` package includes `dot-config/git/ignore`, which Git treats as the default global
 excludes file, so patterns there (currently `.agentvm.yml`) are ignored in every repo without
 touching any project's own `.gitignore`.
-
-`agent-deck` holds [Agent Deck](https://github.com/asheshgoplani/agent-deck)'s config in two files, in
-`~/.config/agent-deck/`: `settings.toml`, the settings every machine shares (self-updates off, …), and
-`remotes.toml`, the laptop's guests, one `[remotes.<name>]` each (a NixOS host gets its own from nixed instead).
-Deck reads neither: `agent-deck-config` builds its `config.toml` from them, and `fleet` runs it each time, before the
-deck window starts, so edit `settings.toml` or `remotes.toml` in dotfiles, then run `fleet` (a running TUI reloads the
-file). Each key of `settings.toml` wins; what deck writes itself (its settings screen, `launch`) is kept unless
-`settings.toml` names it; `remotes.toml` replaces every remote, so a guest you remove goes. A key you take out of `settings.toml` stays in `config.toml`
-(it can't be told from one deck wrote): take it out there too. The package also holds
-`agent-deck-install`, which installs the pinned release (v1.16.38, its tarball's sha256 checked) into
-`~/.local/bin/agent-deck` and does nothing when that version is already there. Run it on the laptop. Each guest needs the
-same version, which deck runs over ssh: installed there by hand (the same URL and sha256) until agent-methodology
-pins it for guests. A `[hotkeys] switch_session` key (unbound in v1.16.38) works only on sessions on the machine
-the TUI runs on: attached to a guest's session, only Ctrl+Q is caught, every other key goes to the guest
-(`docs/knowledge/agent-deck-in-tmux.md`).
 
 `scripts` holds standalone tools in `~/.local/bin`. `battery-notify` sends a notification (via `notify-send`,
 shown by dunst) when the battery drops to 20% and 10%, and a critical one at 5%, each once per discharge; plugging
@@ -64,7 +48,8 @@ start it, or run that `sxhkd` command once now.
 
 ## Terminal
 
-Alacritty uses JetBrains Mono 14 (`sudo pacman -S ttf-jetbrains-mono`) with 4px extra between lines, off-white
+Alacritty uses JetBrains Mono 14, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
+Nerd Font`: the guests' workmux draws Nerd Font status icons) with 4px extra between lines, off-white
 `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
 Alacritty reloads `alacritty.toml` on save.
 
@@ -81,8 +66,8 @@ For reading long output:
 `tmux/` is the one tmux config for this laptop and the NixOS hosts: nixed links each host's
 `~/.config/tmux/tmux.conf` to its own checkout of this repo (`~/repos/dotfiles`). `tmux.conf` sources
 `plugins.tmux` last; here that file loads the plugins through TPM, on the hosts nixed generates one that loads
-them from nixpkgs. Prefix is `C-a` (`C-a C-a` types a literal `C-a`). In a session attached from fleet's deck
-window, `C-b` is that session's own tmux, on the guest, and Ctrl+Q goes back to deck.
+them from nixpkgs. Prefix is `C-a` (`C-a C-a` types a literal `C-a`). In fleet's window of a guest, `C-b` is the
+guest's own tmux, where its agents run.
 
 Laptop (Arch) setup, once:
 
@@ -113,37 +98,66 @@ After pulling changes to `tmux/` (e.g. the gruvbox theme, which dropped catppucc
 ```shell
 # Laptop
 cd ~/repos/dotfiles && git pull
-mkdir -p ~/.config/agent-deck && stow -t "$HOME" --dotfiles -R tmux agent-deck   # links any new file; edits to linked ones are live already
-# once, from PR #11: the restow drops the old config.toml link; the next `fleet` writes a config.toml file in its place
-agent-deck-install                    # once, and again after a pin bump
+stow -t "$HOME" --dotfiles -R tmux    # links any new file; edits to linked ones are live already
 # in tmux: prefix alt-u removes plugins no longer listed (catppuccin), then prefix r reloads the config
 
 # Each NixOS host: the config is linked to ~/repos/dotfiles, so a pull is the update
 cd ~/repos/dotfiles && git pull
 # a plugin added or removed also needs nixed's switch (it lists the hosts' plugins); then, in tmux: prefix r
-# agent-deck: nixed's switch runs agent-deck-install (home-manager), as stow and the line above do here. Its config:
-# nixed links settings.toml and writes the host's remotes.toml (from nixed's change/host-agent-deck-config), and
-# fleet builds config.toml from them; until that switch, fleet warns and deck keeps the config.toml it has
 ```
 
-`prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
-reaches it within 30 s, no restart. A session an older fleet built (one window per agent session, kept in step by
-`prefix F`) is rebuilt in the new layout by running `fleet` once, from outside that session (from inside it, `fleet`
-would kill the session it runs in; detach first, or run it in another session). If a reload leaves stale styling
-behind, `tmux kill-server` starts clean; resurrect brings your own sessions back, and `fleet` rebuilds its own.
+Once, after the pull that removed the `agent-deck` package (2026-11-22): on the laptop, its stowed links dangle; take
+them off, and Agent Deck with them (a host's go with nixed's switch):
+
+```shell
+find ~/.config/agent-deck ~/.local/bin -maxdepth 1 -xtype l -lname '*dotfiles/agent-deck/*' -delete
+rm -rf ~/.local/bin/agent-deck ~/.config/agent-deck   # deck itself and its config, if you keep no use for them
+```
+
+`prefix r` restyles everything already open. A session an older fleet built (its `deck` or `overview` window) is
+rebuilt in the new layout by
+running `fleet` once, from outside that session (from inside it, `fleet` says so and stops: detach first, or run it
+in another session). If a reload leaves stale styling behind, `tmux kill-server` starts clean;
+resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
-guests only). Inside: window `deck` lists and attaches the sessions, window `overview` shows what needs you, and
-`fleet doctor` says what is missing when something doesn't show. Details in *fleet* below.
+guests only), and `fleet doctor` says what is missing when something doesn't show. Details in *fleet* below.
 
 ### fleet: every agent session in one tmux session
 
-`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet` with two windows (layout C, agent-methodology's
-D20): window `deck` runs Agent Deck's TUI, each microVM guest one of its remotes (`remotes.toml`, in
-the `agent-deck` package above), where you list the agent sessions and attach one; window `overview` shows each guest's open inbox
-items and supervisor rows, refreshed every 30 s, with the first guest's resources to its right. The hosts are in
-`~/.config/fleet/hosts` (one ssh destination per line, from this package). On a host itself, `fleet --local` shows
-that host's guests in `fleet-<host>`.
+`fleet` (`tmux/dot-local/bin/fleet`) attaches each microVM guest's own `agents` tmux session over ssh, where
+agent-methodology's sessions run on [workmux](https://github.com/raine/workmux), a window per agent. The session
+opens on its window `dashboard`, workmux's dashboard of every agent: Enter (or 1–9) on one goes to its window, and
+`C-b w` comes back. fleet makes that window when it isn't there, and restarts the dashboard after each jump, which
+ends it.
+
+- **One guest, one tmux.** On a host (`fleet --local`: its one guest) or with `fleet attach <guest>`, the guest's tmux
+  is attached straight from your terminal. Run it from a terminal outside tmux: inside one, the guest's nests in it
+  (fleet says so).
+- **Several guests** (the laptop: nixos's `agentvm-repos`, thinkcentre's `agentvm-thinkrepos`): a tmux session
+  `fleet` with a window per guest, each attaching its guest. Two guests are two tmux servers on two machines, so
+  here the guest's tmux nests in fleet's: `C-a` is fleet's, `C-b` the guest's.
+
+The hosts are in `~/.config/fleet/hosts` (one ssh destination per line, from this package).
+
+The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruvbox look on tmux's own keys (prefix
+`C-b`, and agent-methodology's `C-b u` switches a session's mode), windows from 0, the mouse on (the dashboard takes
+clicks), the host's name on a dimmed purple on the left, workmux's `wm-` drawn dim. The tabs carry workmux's status
+icon: workmux copies the tab format into each agent window and puts its icon before the format's
+`#{?window_flags,,}`. Its icons are Nerd Font glyphs (agent-methodology's workmux config), so the terminal you look
+through needs a Nerd Font: alacritty's is (*Install*); a host, with no desktop, needs none. nixed links it as each
+guest's `~/.config/tmux/tmux.conf` (nixed#45), so a guest's tmux server starts with it. A server already running
+reads it, and its open windows and the agents session take the new tab formats, with:
+
+```shell
+tmux source-file ~/.config/tmux/tmux.conf
+tmux set -u -t agents window-status-format; tmux set -u -t agents window-status-current-format
+for o in window-status-format window-status-current-format; do
+  f=$(tmux show -gv "$o" | sed 's/#{?window_flags,,}/#{?@workmux_status, #{@workmux_status},}&/')
+  for w in $(tmux list-windows -t =agents -F '#{?@workmux_token,#{window_id},}'); do tmux set -w -t "$w" "$o" "$f"; done
+done
+tmux set -u -t agents status-left   # the UNATTENDED block comes back at the next start, or C-b u
+```
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
 hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
@@ -164,49 +178,23 @@ Host 192.168.123.*
 CONF
 ```
 
-Then `fleet doctor`, which names the first thing missing: this machine's `agent-deck` (on PATH, at
-`agent-deck-install`'s pin, with `settings.toml`, `remotes.toml` and a `config.toml` up to date with them), each host's and guest's ssh (a guest ssh that fails shows ssh's own
-reason), and each guest's ssh as the deck window makes it (`deck ssh`). Guest ssh
-always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>` too. On a host,
-fleet's own guest ssh (`fleet --local`) uses that host's `~/.agentvm/keys/id_ed25519` by itself; the deck window's
-does not (*Setup on a host*, below).
+Then `fleet doctor`, which names the first thing missing: `tmux`, `jq` and `ssh` here, each host's ssh, the tailnet
+route to each guest, and each guest's ssh with tmux there (a guest ssh that fails shows ssh's own reason). Guest ssh always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>`
+too. On a host, `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by itself: nothing to set up there.
 
 | | |
 |---|---|
-| `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| deck window | first, when `agent-deck` is installed (`FLEET_DECK_CMD` names another command, empty for none; without it `fleet` says so and builds the overview alone, and the next `fleet` once it is installed rebuilds the session with it; a deck window you close, or quit with `q`, comes back with the next `fleet`): Agent Deck's TUI, the guests its remotes; Enter attaches a session, Ctrl+Q comes back. When the session you watched hands off (its successor's `prev` names it, and deck marked it viewed), your terminal moves to the successor with it, and once you're back on the list the overview's next round puts the TUI's cursor on it. Its first start asks to add Claude Code hooks (`y` or `n`); a deck already open elsewhere closes the window (one per profile) |
-| overview window | each guest's open inbox items (`✉ #n kind branch`, and its `continue` command, or what it needs), then its status rows: `<branch> <mode> <activity> [kind] [gated #n]`; to its right the first guest's resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
-| status bar `nixos ●3 ◆1 ✉1` | per host, in its colour: `●` live sessions (deck's activity working, idle or asking), `◆` asking, `✉` open inbox items (`◆` and `✉` left out at 0); `✗`: host unreachable. Rewritten by the overview's loop |
-| `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's table, the rest |
+| `fleet` | the only guest attached from this terminal; with several, start the session if needed, then attach (or switch to it from inside tmux) |
+| `fleet attach <guest>` | that guest, attached from this terminal |
+| a guest's window | named after the guest: its `agents` tmux session, attached over ssh, on `dashboard`. `C-b` is the guest's tmux there: its bar lists the agents' windows (with workmux's status icons, and `UNATTENDED` on an unattended one), `C-b w` picks one, `C-b d` comes back to a line that attaches again at Enter or in 15 s (also after a dropped link). A host that was down at the start gets a window named after it, which attaches its guest once it answers. A window you closed comes back after `tmux kill-session -t fleet` and `fleet` |
+| `fleet ls`, `fleet doctor`, `fleet help` | guests, the checks, the rest |
 
-Which session runs unattended shows in the overview's rows (`unattended`) and, inside each session, its own status
-line. Your own panes show their command and directory on their border; the focused pane's border is blue. The theme
-is gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect
+Your own panes show their command and directory on their border; the focused pane's border is blue. The theme is
+gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font; the guests' workmux icons do (above). After a laptop reboot resurrect
 restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).
-
-#### Setup on a host
-
-The deck window's agent-deck runs a plain `ssh agentvm@<guest ip>` (no `-i`), so without a block in
-`~/.ssh/config` naming the agentvm key it offers your own key, the guest refuses it, and the deck shows the remote as
-unreachable (`auth failed`) while the overview, on fleet's `-i`, works. Add once, as theo, with the host's guest subnet
-(nixos `192.168.122.*`, thinkcentre `192.168.123.*`):
-
-```shell
-cat >> ~/.ssh/config <<'CONF'
-Match host 192.168.122.* localuser theo
-  User agentvm
-  IdentityFile ~/.agentvm/keys/id_ed25519
-  IdentitiesOnly yes
-  StrictHostKeyChecking accept-new
-CONF
-```
-
-`localuser theo` keeps it to the host: the guests read the host's `~/.ssh/config` too (at `/mnt/host-ssh`), and
-there the path doesn't exist and would hide a guest's own key. `IdentitiesOnly` keeps the agent's keys from using up
-the guest's tries before this one. `fleet --local doctor` then shows `ok    deck ssh`.
 
 ### System files: manjaro-playbook
 
@@ -220,14 +208,14 @@ battery charge thresholds, which dwmblocks' `sb-bat` pairs with a plug icon on t
 The `claude` package draws Claude Code's status line in powerline style, gruvbox like alacritty and tmux:
 
 ```
- dotfiles  ⎇ master ✓  ✱ Fable 5.2  ✦ high  ◱ 31% (1h 59m)  ◑ 12% (3d 11h)  ctx ██░░░░░░░░ 42k/150k  inbox 2
+ dotfiles  ⎇ master ✓  ✱ Fable 5.2  ✦ high  ◱ 31% (1h 59m)  ◑ 12% (3d 11h)  ctx ██░░░░░░░░ 42k/150k
 ```
 
 Directory, git branch and its state (`✓` clean, `●` changes), model, effort level, the 5-hour and weekly usage with the time to each reset, then the
-context against the session's budget (green, yellow from 80%, red with `HAND OFF` from 100%) and the inbox's count of
-items not closed (only over 0). The first six are [claude-powerline](https://github.com/Owloops/claude-powerline)'s,
-set in `~/.config/claude-powerline/config.json` (which boxes, their order and colours); the last two are drawn by
-`~/.config/agent-methodology/statusline-render`, which runs claude-powerline and joins its own boxes onto the end.
+context against the session's budget (green, yellow from 80%, red with `HAND OFF` from 100%). The first six are
+[claude-powerline](https://github.com/Owloops/claude-powerline)'s, set in `~/.config/claude-powerline/config.json`
+(which boxes, their order and colours); the last is drawn by `~/.config/agent-methodology/statusline-render`, which
+runs claude-powerline and joins its own box onto the end.
 Alacritty draws the arrow between boxes itself, so no special font is needed. On a terminal too narrow for the line,
 claude-powerline wraps its boxes onto a second line, and ours follow the last.
 
@@ -247,7 +235,7 @@ npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # into ~/.lo
 
 A change to the config or the renderer shows at the line's next refresh. To bump claude-powerline, try the new
 version first (`bats tests/statusline.bats` uses a stub, so also run the renderer by hand): the join relies on how it
-closes its line, and a line that closes another way gets our boxes after a gap.
+closes its line, and a line that closes another way gets our box after a gap.
 
 ## Code
 
