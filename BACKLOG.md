@@ -8,10 +8,9 @@ and why it waits. The PR that fixes an item deletes its line.
 Due soon: what someone said to do next, and what waits on the user. Keep it short.
 
 <!-- - <item> — from <investigation / review / handoff>; <waits on the user: what> | <due: why soon>. -->
-- fleet on workmux (layout D), the check of agent-methodology's step 5 slice 6: on the laptop and on nixos, `git
-  pull`, the laptop's one-time link cleanup (`README.md`, *Update and run*), then `fleet doctor` and `fleet` (`fleet
-  --local` on nixos): the overview lists each guest's agents, and a guest's window attaches its `agents` session —
-  from the PR that removed the `agent-deck` package; waits on the user.
+- fleet's window per guest (layout E), the check of agent-methodology's step 5 slice 6: on the laptop and on nixos,
+  the branch, the laptop's one-time link cleanup (`README.md`, *Update and run*), then `fleet doctor` and `fleet`
+  (`fleet --local` on nixos): each guest's window attaches its `agents` session — from PR #16; waits on the user.
 - Claude Code's status line after PR #14, now that agent-methodology#177 (the hook that runs the renderer) has
   merged. A session: check `claude/dot-config/agent-methodology/statusline-render` against the hook as merged
   (`AGENT_STATUSLINE_RENDER`, the path `~/.config/agent-methodology/statusline-render`, `AGENT_SL_PLAIN`, `AGENT_SL_CTX`,

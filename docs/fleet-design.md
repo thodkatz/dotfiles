@@ -1,8 +1,8 @@
 # tmux fleet view: observing agent sessions across hosts
 
 **Status:** approved by the user, 2026-11-05. **Repos touched:** `dotfiles` (slices 1–2), `nixed` (slice 3).
-`agent-methodology` is consumed, not changed. Since layout D (2026-11-22, Clarification 27) the session has an
-overview of every guest's workmux agents and a window per guest attaching its `agents` session; Agent Deck, the
+`agent-methodology` is consumed, not changed. Since layout E (2026-11-22, Clarifications 27 and 28) the session is a
+window per guest attaching its `agents` tmux session, and nothing else: no overview, hint or btop. Agent Deck, the
 supervisor and the inbox are gone. Clarifications 20–26 record layout C's deck window, superseded.
 
 **Who reads it:** the plan's author, each slice's implementer and reviewers, and the user, who approves the
@@ -17,9 +17,8 @@ here).
 
 **Decision.** This repo becomes the single source of the tmux config, with plugins (sessionx,
 extrakto, yank, resurrect, continuum) and its own gruvbox theme, and gains a bash tool, `fleet`, that builds one tmux session on the
-laptop: window `overview` lists every guest's agents, and a window per guest attaches that guest's `agents` tmux
-session (Clarification 27). It discovers hosts' guests live from `/etc/agentvm/projects.json`, reads each guest's
-agents from its `workmux status --all --json`, and shows a cached status-bar hint of what is live and what needs you. The same tool runs
+laptop: a window per guest attaches that guest's `agents` tmux session (Clarification 28). It discovers hosts'
+guests live from `/etc/agentvm/projects.json`. The same tool runs
 on a host as `fleet --local`, for that host's guests only. nixed stops carrying its own copy: home-manager links
 `tmux.conf` and `fleet` to the host's `~/repos/dotfiles` checkout (the repo is private, so no flake input), and
 generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
@@ -32,17 +31,17 @@ generates a `plugins.tmux` that loads the plugins from `pkgs.tmuxPlugins`.
 | 2 | The laptop gets plugins through TPM, from `tmux/dot-config/tmux/plugins.tmux`: tmux-sessionx, extrakto, tmux-yank, tmux-resurrect, tmux-continuum | *Plugins, keys, theme* | On the laptop after stow + `prefix I`: `tmux list-keys \| grep -E 'sessionx\|extrakto'` shows both bindings, and `tmux show -g @continuum-save-interval` prints `15` |
 | 3 | nixed drops `programs.tmux` (it writes its own `tmux.conf`, which would clash with the link): `tmux`, `jq`, `fzf` go in `home.packages`; `tmux.conf` and `fleet` are `mkOutOfStoreSymlink`s into `~/repos/dotfiles`; `plugins.tmux` is generated with one `run-shell` per plugin from `pkgs.tmuxPlugins` | *Where things live* | In the VM: `grep -n 'programs.tmux' modules/home.nix` prints nothing. On `nixos` after switch: `readlink ~/.config/tmux/tmux.conf` points into `~/repos/dotfiles`; `grep -c '^run-shell' ~/.config/tmux/plugins.tmux` prints `6`; `tmux list-keys \| grep -E 'sessionx\|extrakto'` shows both |
 | 4 | `fleet` discovers hosts from `~/.config/fleet/hosts` and each host's guests from `ssh theo@<host> cat /etc/agentvm/projects.json`; `--local` reads this machine's file and no hosts list | *Discovery* | bats: with a stub `ssh` serving two hosts' `projects.json`, `fleet ls` prints one line per guest with its host; with `--local` and `AGENTVM_PROJECTS=<fixture>`, only that file's guests |
-| 5 | Each guest's agents come from its `workmux status --all --json` (workmux in `PATH` or `~/.local/bin`, under `LC_ALL=C.UTF-8`), each with its window's `@am_mode`; a guest without workmux is shown as `no workmux`, a failing workmux with its last line (Clarification 27) | *Discovery* | bats: `"probe script: workmux's JSON under a UTF-8 locale, then each pane's mode; its table"`, `"probe script: no tmux server is no agents, without asking workmux"`, `"probe script: workmux off PATH is found in ~/.local/bin, else fleet:no-workmux; a failure is fleet:error"` |
-| 6 | Session `fleet` (`fleet-<host>` under `--local`): window `overview`, its loop and the first guest's btop beside, then a window per guest (Clarification 27) | *Layout* | bats: `"fleet start makes the overview, then a window per guest"` |
-| 7 | A session is attached in its guest's window: `ssh -t` to the guest's `tmux attach -t =agents`, again at Enter or in 15 s; window `overview` lists each guest's agents, `<project>/<worktree> (<branch>) <kind> <status> [mode] <age>` (Clarification 27) | *Layout* | bats: `"overview lists both guests' agents, from workmux's status"`, `"up: a guest's window attaches its agents session over the guest's ssh, unshared"`, `"attach: after the attach ends, it says so and attaches again at Enter"` |
-| 8 | No sync: `fleet sync` is an unknown command and `prefix F` is unbound; nothing moves on its own (the hop follow went with deck, Clarification 27) | — | bats: `"fleet sync is unknown"` (exit 2, usage) |
+| 5 | No probe of a guest's sessions: its own tmux `agents` session, attached, shows them (Clarification 28; before, workmux's status, Clarification 27, and the supervisor's `status.sh`) | — | — |
+| 6 | Session `fleet` (`fleet-<host>` under `--local`): a window per guest, named after it, and no other (Clarification 28) | *Layout* | bats: `"fleet start makes a window per guest, named after it, and nothing else"` |
+| 7 | A guest's window attaches its `agents` session: `ssh -t` to `tmux -u attach -t =agents`, the guest looked up again each time, again at Enter or in 15 s; a host down at the start gets a window named after it, which attaches its guest once it answers (Clarification 28) | *Layout* | bats: `"up: a guest's window attaches its agents session over the guest's ssh, unshared"`, `"attach: after the attach ends, it says so and attaches again at Enter"`, `"attach: a host down at the start gets a window named after it, which attaches its guest once it answers"` |
+| 8 | No sync: `fleet sync` is an unknown command and `prefix F` is unbound; nothing moves on its own (the hop follow went with deck, Clarification 27) | — | bats: `"fleet sync, status and hint are unknown"` (exit 2, usage) |
 | 9 | One unreachable host or guest never fails `fleet up` or a round: ssh runs with `BatchMode=yes`, `ConnectTimeout=5`, guests in parallel, and the failure becomes one `unreachable` overview line | *Discovery* | bats: the stub fails for one guest; `fleet up` exits 0, and `fleet status <failed>` prints `unreachable` |
-| 10 | The status bar shows `fleet hint` from a cache file the overview's loop rewrites every 30 s, so the bar never runs ssh: `<host> ●N ◆M` per host in tmux styles (● the guests' agents; ◆ those workmux reads `waiting`, hidden at 0; the host in its colour; `✗` unreachable) | *Hint* | bats: `"hint: per host its agents and the waiting ones, in its colour; --refresh rediscovers (D10)"`; from the fixtures `nixos ●4 ◆1  thinkcentre ●1` with the styles |
+| 10 | No hint: the status bar's right side is the date (Clarification 28) | — | bats: `"fleet sync, status and hint are unknown"` |
 | 11 | Keys (prefix `C-a`, `C-a C-a` sends it, so the guest's tmux keeps `C-b`; nothing else rebound): `f` sessionx, `Tab` extrakto, `y` in copy mode tmux-yank; fleet binds none (a guest's window attaches; the guest's `C-b d` detaches) (Clarification 22) | *Plugins, keys, theme* | `tmux show -g prefix` prints `prefix C-a`; `tmux list-keys -T prefix` shows `C-a` as `send-prefix`, `f`, `Tab` bound as stated and `h j k l r c " %` unchanged |
 | 12 | Theme: gruvbox, written in `tmux.conf` (no theme plugin); `pane-border-status top` naming fleet's overview and resources panes, else the pane's command and directory; the focused pane's border is blue | *Plugins, keys, theme* | Early output (below): the user looks at the laptop session and can tell fleet's panes from their own shells |
-| 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3), adding a window for a guest that has none (Clarification 27) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: a host down at the start gets its guests' windows at a later fleet, once; a closed one comes back"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
-| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; ssh to each host, the tailnet route to each guest, ssh to each guest and `workmux` in its `~/.local/bin`) and names the one that fails, with ssh's own reason | *Discovery* | bats: `"doctor: names the guest whose ssh fails, with ssh's own reason, and one without workmux; exits 1 (D14)"`, `"doctor: all good exits 0 (D14)"` |
-| 15 | `fleet` uses only these fields of workmux's agents: `worktree`, `project`, `branch`, `status`, `agent_kind`, `elapsed_secs`, `pane_id`; a missing field shows `?` and never stops a round | *Contract consumed* | bats: `"overview lists both guests' agents, from workmux's status"`, `"overview: an agent missing fields shows ?, and one with no mode line leaves it out"` |
+| 13 | resurrect leaves `ssh` out of restored processes (its default) and continuum auto-restores on the laptop only; `fleet` rebuilds a fleet session it finds without its server-lifetime marker `@fleet-booted-<session>` (a restore into a new server), and leaves one with the marker alone (Clarification 3) | *Plugins, keys, theme* | bats: with the marker unset, `fleet up` rebuilds the session to the fresh layout and sets it; with it set, a window made by hand survives `fleet up`; `"up: an older fleet's session isn't rebuilt from inside it, which would end the pane fleet runs in"`; `tmux show -g @continuum-restore` is `on` on the laptop and not `on` on `nixos` |
+| 14 | `fleet doctor` checks each prerequisite (`tmux`, `jq`, `ssh`; ssh to each host, the tailnet route to each guest, ssh to each guest and `tmux` there) and names the one that fails, with ssh's own reason | *Discovery* | bats: `"doctor: names the guest whose ssh fails, with ssh's own reason, and one without tmux; exits 1 (D14)"`, `"doctor: all good exits 0 (D14)"` |
+| 15 | Nothing of a guest's is read but its `projects.json` entry (`vmName`, `ip`) (Clarification 28) | — | — |
 
 ## Early output
 
@@ -87,23 +86,15 @@ can't: it dangles too).
 ## Discovery
 
 For each host in `~/.config/fleet/hosts` (or, under `--local`, this machine alone, from
-`/etc/agentvm/projects.json` directly): read its `projects.json` (guest name, IP). For each guest, over
-`ssh agentvm@<ip>`, a probe script on stdin runs `workmux status --all --json` (workmux from `PATH`, else
-`~/.local/bin`, where agent-methodology's `methodology place` installs it), then prints `fleet:modes` and each pane's
-`<pane id><tab><@am_mode>` from `tmux list-panes -a`, the session mode agent-methodology keeps on each agent's window,
-which workmux doesn't carry. It sets `LC_ALL=C.UTF-8`: tmux writes workmux's non-ASCII field separator as `_` to a
-client without a UTF-8 locale, and workmux then fails ("tmux returned malformed pane information"). No tmux server
-is no agents (workmux fails then); no workmux prints `fleet:no-workmux`; a failing workmux `fleet:error <its last
-line>`; so a probe that fails is ssh's, `unreachable`. `fleet status <guest>` runs workmux's own table instead.
+`/etc/agentvm/projects.json` directly): read its `projects.json` (guest name, IP). Nothing else is read from a guest:
+its window attaches its own tmux (Clarification 28).
 
-All ssh calls: `-o BatchMode=yes -o ConnectTimeout=5`, guests in parallel (background jobs, one output file each
-in a temporary directory under the session's state directory), then joined; a guest's probe runs under
-`timeout` (`FLEET_PROBE_TIMEOUT`, 15 s). Hosts are read in parallel too, joined in the hosts file's order. The probes
-and the hosts' `projects.json` reads share one ssh connection per destination (`ControlMaster=auto`,
-`ControlPath=<state>/ssh/%C`, `ControlPersist` `FLEET_SSH_PERSIST`, 10m), so a round or a refresh pays no handshake;
-the btop pane never does, so a master's end can't take it with it. `FLEET_SSH_MUX=0` turns it off, as does a
+All ssh calls: `-o BatchMode=yes -o ConnectTimeout=5`. Hosts are read in parallel, joined in the hosts file's order.
+The hosts' `projects.json` reads share one ssh connection per destination (`ControlMaster=auto`,
+`ControlPath=<state>/ssh/%C`, `ControlPersist` `FLEET_SSH_PERSIST`, 10m), so a window looking its guest up again pays no
+handshake; the attach never does, so a master's end can't take it with it. `FLEET_SSH_MUX=0` turns it off, as does a
 state path too long for the 108-byte socket path. State lives in `${XDG_RUNTIME_DIR:-/tmp}/fleet-$UID/<session>/`:
-`fleet.json`, `hint`. The laptop reaches guests directly over the tailnet routes each
+only `ssh/`, the shared connections. The laptop reaches guests directly over the tailnet routes each
 host advertises; on a host, over its own bridge.
 
 Guest ssh also adds `-o StrictHostKeyChecking=accept-new`, and `-i "$AGENTVM_KEY"` when that is set, else, under
@@ -116,29 +107,17 @@ btop pane included, so a host needs no `~/.ssh/config` block (deck's own ssh did
 ## Layout
 
 Session `fleet`, or `fleet-<host>` under `--local`, built by `fleet` (or `fleet up`) and marked
-`@fleet-booted-<session>` = `d`; a session without that value (resurrect's, or an older fleet's deck window) is
-killed and rebuilt, but not by a `fleet` run inside it, which would die with it: that one says so and exits 1. A
-session with it keeps its windows, and gets a window for each guest in its `fleet.json` that has none (its host was
-down at the start, and the overview's loop has found it since; or the window was closed), after the others, with no
-ssh of its own. The older fleets' hint loop (`hintloop.pid`, before layout C) is no longer stopped: none runs.
-
-- Window `overview`: a loop (`@fleet-overview` 1) that every `FLEET_OVERVIEW_INTERVAL` (30 s) runs one round with
-  the `fleet` on disk (`fleet _round`), so a pull needs no restart: discover, write the hint, print per guest its name
-  and host and its agents, one line each: `<project>/<worktree>` (the project alone for its main checkout), the
-  branch in brackets when it differs, the agent's kind, workmux's status, the mode when the window has one, and how
-  long it has had that status; `(no agents)`, `no workmux`, `✗ workmux: <error>`, or `✗ unreachable` for a guest or
-  host that didn't answer. To its right, 72 columns, the first guest's btop over ssh (`@fleet-res-guest`).
-- A window per guest, named after it (`@fleet-guest`): `ssh -t` to the guest's `tmux attach -t =agents`, the session
-  where agent-methodology's agents run on workmux, a window each. There `C-b` is the guest's tmux. When the attach
-  ends (a detach, a dropped link, no session) the pane says so and attaches again at Enter or in 15 s.
+`@fleet-booted-<session>` = `e`; a session without that value (resurrect's, or an older fleet's) is killed and
+rebuilt, but not by a `fleet` run inside it, which would die with it: that one says so and exits 1. A session with it
+is left as it is. It holds a window per guest, named after it (window option `@fleet-guest`, `<guest> · <host>`, on
+the pane border): `ssh -t` to the guest's `tmux -u attach -t =agents`, the session where agent-methodology's agents
+run on workmux, a window each. There `C-b` is the guest's tmux. When the attach ends (a detach, a dropped link, no
+session) the pane says so and, at Enter or in 15 s, looks the guest up again and attaches. A host whose guests
+couldn't be read at the start gets a window named after it, which attaches its first guest once the host answers.
 
 ## Hint
 
-`status-right` runs `fleet hint`, which only `cat`s the session's `hint` file, and only while its session exists;
-the overview's round rewrites it, and `fleet hint --refresh` rediscovers. Format, in tmux styles: one `<host> ●N ◆M`
-group per host (the host in its colour, `◆M` left out at 0; `<host> ✗` when no guest of it answered), two spaces
-between. `●` counts the guests' agents (each a live pane, by workmux's list), `◆` those workmux reads `waiting` (a
-dialog, W1 of agent-methodology's `docs/investigations/2026-11-22-deck-replacement/workmux.md`).
+None since layout E: `status-right` is the date (Clarification 28).
 
 ## Plugins, keys, theme
 
@@ -156,17 +135,16 @@ any other pane's command and directory (Clarification 4). The focused pane's bor
 
 ## Contract consumed
 
-From workmux (0.1.284), on a guest: `status --all --json`'s `agents`, each with `worktree`, `project`, `branch`,
-`status`, `agent_kind`, `elapsed_secs` and `pane_id`, among others fleet ignores; from agent-methodology, the window
-option `@am_mode` (its slice 1 of step 5) and workmux in `~/.local/bin`. A missing field is shown with `?`.
+Each host's `/etc/agentvm/projects.json` (`vmName`, `ip`); on each guest, a tmux session `agents` (agent-methodology's
+window mode on workmux, its step 5 slice 1).
 
 ## Testing
 
 - **dotfiles, every slice:** `bash -n` and `shellcheck` on `fleet`; `bats tests/fleet.bats`, which runs against a
   private tmux server (`tmux -L fleet-test`, killed in teardown) with a stub `ssh` first on `PATH` that answers
   from `tests/fixtures/` by host or IP and command. The checks in the decisions table are its cases.
-- **Laptop, manual:** `fleet doctor` passes; `fleet` shows both hosts' guests' agents; a guest's window attaches its
-  `agents` session (Clarification 27).
+- **Laptop, manual:** `fleet doctor` passes; `fleet` has a window per guest, each attached to its `agents` session
+  (Clarification 28).
 - **nixed (slice 3):** its *Setup* check in the VM; on the host, `nixos-rebuild build`, then after the user's
   switch, decision 3's check and `fleet --local` on `nixos`.
 
@@ -182,8 +160,7 @@ option `@am_mode` (its slice 1 of step 5) and workmux in `~/.local/bin`. A missi
 
 ## Out of scope, and follow-ups
 
-- **workmux's JSON across its releases**: agent-methodology pins workmux; a pin bump there may change the fields
-  decision 15 reads, and decision 15's tolerance (`?`) covers drift until the overview is looked at.
+- None open.
 
 ## Clarifications
 
@@ -396,3 +373,10 @@ option `@am_mode` (its slice 1 of step 5) and workmux in `~/.local/bin`. A missi
    the inbox items and `✉` (decision 10), the `status.sh` probe (decision 5), doctor's deck checks (decision 14), and
    the status line's inbox box. Rewritten in the decisions above, *Discovery*, *Layout*, *Hint*, *Contract consumed*,
    *Testing*, `README.md` and `AGENTS.md`; *Hops* deleted.
+28. **Layout E: a window per guest, nothing else** (decisions 5, 6, 7, 10, 13, 15) — `folded`; supersedes 27's
+   overview. The user, 2026-11-22, on trying layout D: "we don't need any more the overview tab let's use the vanilla
+   tmux setup as it is", and a window per host, not panes side by side (one guest per host today). The guest's own
+   `agents` session already shows its agents (workmux's status icons and the `UNATTENDED` block in its bar), so the
+   overview, its loop, the hint, the btop pane, the workmux probe and `fleet status` go. A window looks its guest up
+   at each attach, so a host down at the start gets a window that attaches once it answers. Rewritten in the decisions
+   above, *Discovery*, *Layout*, *Hint*, *Contract consumed*, *Testing*, `README.md` and `AGENTS.md`.

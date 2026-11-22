@@ -14,17 +14,7 @@ cmd="$*"
 [ ! -e "$fx/needkey-$dest" ] || [ -n "$I" ] || { echo "agentvm@$dest: Permission denied (publickey,keyboard-interactive)." >&2; exit 255; }
 case $cmd in
   'cat /etc/agentvm/projects.json') [ ! -e "$fx/slow-$dest" ] || sleep 2; cat "$fx/projects-$dest.json" ;;
-  'bash -s -- json'|'bash -s -- table')
-    # what the probe script prints on the guest
-    cat >/dev/null
-    [ ! -e "$fx/hang-$dest" ] || exec sleep 600
-    if [ -e "$fx/nowm-$dest" ]; then echo fleet:no-workmux
-    elif [ -e "$fx/wmfail-$dest" ]; then echo "fleet:error Error: tmux returned malformed pane information"
-    elif [ "$cmd" = 'bash -s -- json' ]; then
-      cat "$fx/guest-$dest.json"
-      [ ! -e "$fx/modes-$dest" ] || { echo fleet:modes; cat "$fx/modes-$dest"; }
-    else echo "table of $dest"; fi ;;
-  *'tmux -u attach -t =agents'*|*btop*) exec sleep 600 ;;
-  true|'command -v workmux || test -x .local/bin/workmux') [ ! -e "$fx/nowm-$dest" ] ;;
+  *'tmux -u attach -t =agents'*) exec sleep 600 ;;
+  true|'command -v tmux') [ ! -e "$fx/notmux-$dest" ] ;;
   *) echo "stub ssh: unexpected command: $cmd" >&2; exit 1 ;;
 esac

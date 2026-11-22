@@ -113,24 +113,23 @@ find ~/.config/agent-deck ~/.local/bin -maxdepth 1 -xtype l -lname '*dotfiles/ag
 rm -rf ~/.local/bin/agent-deck ~/.config/agent-deck   # deck itself and its config, if you keep no use for them
 ```
 
-`prefix r` restyles everything already open. fleet's overview loop runs the `fleet` on disk each round, so a pull
-reaches it within 30 s, no restart. A session an older fleet built (its `deck` window) is rebuilt in the new layout by
+`prefix r` restyles everything already open. A session an older fleet built (its `deck` or `overview` window) is
+rebuilt in the new layout by
 running `fleet` once, from outside that session (from inside it, `fleet` says so and stops: detach first, or run it
 in another session). If a reload leaves stale styling behind, `tmux kill-server` starts clean;
 resurrect brings your own sessions back, and `fleet` rebuilds its own.
 
 Running it: `fleet` on the laptop (every host in `~/.config/fleet/hosts`), `fleet --local` on a host (that host's
-guests only). Inside: window `overview` lists every guest's agents, a window per guest attaches them, and `fleet
-doctor` says what is missing when something doesn't show. Details in *fleet* below.
+guests only). Inside, a window per guest attaches its agents, and `fleet doctor` says what is missing when something
+doesn't show. Details in *fleet* below.
 
 ### fleet: every agent session in one tmux session
 
-`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet`: window `overview` lists each microVM guest's
-agent sessions, refreshed every 30 s, with the first guest's resources to its right; then one window per guest
-attaches that guest's `agents` tmux session, where agent-methodology's sessions run on
-[workmux](https://github.com/raine/workmux), a window per agent. The hosts are in `~/.config/fleet/hosts` (one ssh
-destination per line, from this package). On a host itself, `fleet --local` shows that host's guests in
-`fleet-<host>`.
+`fleet` (`tmux/dot-local/bin/fleet`) builds a tmux session `fleet` with a window per microVM guest (one per host
+today: nixos's `agentvm-repos`, thinkcentre's `agentvm-thinkrepos`). Each attaches that guest's own `agents` tmux
+session over ssh, where agent-methodology's sessions run on [workmux](https://github.com/raine/workmux), a window per
+agent; nothing of fleet's is drawn over it. The hosts are in `~/.config/fleet/hosts` (one ssh destination per line,
+from this package). On a host itself, `fleet --local` shows that host's guests in `fleet-<host>`.
 
 Setup on the laptop, after the tmux setup above: `tailscale up --accept-routes` (the guests are reached over the
 hosts' advertised routes). The guests trust only their own host's agentvm key, so copy each host's key once and
@@ -152,22 +151,18 @@ CONF
 ```
 
 Then `fleet doctor`, which names the first thing missing: `tmux`, `jq` and `ssh` here, each host's ssh, the tailnet
-route to each guest, and each guest's ssh with workmux in its `~/.local/bin` (a guest ssh that fails shows ssh's own
-reason). Guest ssh always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>`
+route to each guest, and each guest's ssh with tmux there (a guest ssh that fails shows ssh's own reason). Guest ssh always adds `StrictHostKeyChecking=accept-new`; `AGENTVM_KEY=<file>` makes it add `-i <file>`
 too. On a host, `fleet --local` uses that host's `~/.agentvm/keys/id_ed25519` by itself: nothing to set up there.
 
 | | |
 |---|---|
 | `fleet` | start the session if needed, then attach (or switch to it from inside tmux) |
-| overview window | per guest, its agents, one line each: the worktree (`<project>/<worktree>`, the project alone for its main checkout, the branch in brackets when it differs), the agent (claude, codex, opencode, …), workmux's status (`working`, `waiting` on a dialog, `done` with its turn), `attended` or `unattended`, and how long it has been so; or `(no agents)`, `no workmux`, `✗ unreachable`. To its right the first guest's resources (btop's CPU and memory/disks boxes, over ssh; htop where the guest has no btop) |
-| a guest's window | named after the guest: its `agents` tmux session, attached over ssh. `C-b` is the guest's tmux there: `C-b w` picks an agent's window, `workmux dashboard` in a pane shows them all, `C-b d` comes back to a line that attaches again at Enter or in 15 s (also after a dropped link). A guest whose host was down at the start, or a window you closed, comes back with the next `fleet` |
-| status bar `nixos ●3 ◆1` | per host, in its colour: `●` its guests' agents, `◆` those waiting on a dialog (left out at 0); `✗`: host unreachable. Rewritten by the overview's loop |
-| `fleet ls`, `fleet status <guest>`, `fleet help` | guests, one guest's `workmux status` table, the rest |
+| a guest's window | named after the guest: its `agents` tmux session, attached over ssh. `C-b` is the guest's tmux there: its bar lists the agents' windows (with workmux's status icons, and `UNATTENDED` on an unattended one), `C-b w` picks one, `workmux dashboard` in a pane shows them all, `C-b d` comes back to a line that attaches again at Enter or in 15 s (also after a dropped link). A host that was down at the start gets a window named after it, which attaches its guest once it answers. A window you closed comes back after `tmux kill-session -t fleet` and `fleet` |
+| `fleet ls`, `fleet doctor`, `fleet help` | guests, the checks, the rest |
 
-Which session runs unattended shows in the overview's rows (`unattended`) and, inside each session, its own status
-line and the guest's tmux bar. Your own panes show their command and directory on their border; the focused pane's
-border is blue. The theme is gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After
-a laptop reboot resurrect restores your sessions, and `fleet` rebuilds its own.
+Your own panes show their command and directory on their border; the focused pane's border is blue. The theme is
+gruvbox, written into `tmux.conf` (no theme plugin), and needs no special font. After a laptop reboot resurrect
+restores your sessions, and `fleet` rebuilds its own.
 
 Tests: `sudo pacman -S bats shellcheck`, then `bats tests/` from the repo root (stub ssh, private tmux
 server; nothing reaches a real host).
