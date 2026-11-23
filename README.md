@@ -19,8 +19,8 @@ npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status
 apply just the packages you list, e.g. `stow -t "$HOME" --dotfiles -R git` for a single one).
 
 The `git` package includes `dot-config/git/ignore`, which Git treats as the default global
-excludes file, so patterns there (currently `.agentvm.yml`) are ignored in every repo without
-touching any project's own `.gitignore`.
+excludes file, so patterns there (currently `.agentvm.yml`, and `.claude/worktrees/`, where agents make their
+worktrees) are ignored in every repo without touching any project's own `.gitignore`.
 
 `scripts` holds standalone tools in `~/.local/bin`. `battery-notify` sends a notification (via `notify-send`,
 shown by dunst) when the battery drops to 20% and 10%, and a critical one at 5%, each once per discharge; plugging
