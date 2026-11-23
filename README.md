@@ -9,7 +9,7 @@ named `dot-foo` gets symlinked as `.foo`.
 ```shell
 sudo pacman -S stow     # if not already installed
 sudo pacman -S otf-monaspace-nerdfonts   # alacritty's font: Monaspace Neon with Nerd Font icons (workmux's); 0.5 GB, all five Monaspace fonts
-sudo pacman -S noto-fonts-emoji          # workmux's status icons: 🤖 💬 ✅
+sudo pacman -S noto-fonts-emoji          # the dashboard's status icons: 🤖 💬 ✅
 mkdir -p ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
 stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode scripts claude
 npm install -g --prefix ~/.local @owloops/claude-powerline@1.32.8   # the status line's boxes (below); needs npm (Arch: `sudo pacman -S npm`)
@@ -147,19 +147,17 @@ The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruv
 clicks), the host's name on a dimmed purple on the left, workmux's branch glyph drawn dim. `C-b C-s` opens workmux's
 dashboard in a popup over the window you are in; `C-b C-t` turns its sidebar, a column in every window with each
 agent's status, on and off (agent-methodology turns it on when it starts the tmux server). The tabs carry workmux's
-status icon (🤖 working, 💬 waiting, ✅ done): workmux copies the tab format into each agent window and puts its icon
-before the format's `#{?window_flags,,}`. The status icons are emoji; the branch glyph and the dashboard's other icons
-are Nerd Font's (agent-methodology's workmux config, `nerdfont: true`), so the terminal you look through needs a Nerd
-Font, alacritty's (*Install*), and an emoji font; a host, with no desktop, needs neither. nixed links it as each
-guest's `~/.config/tmux/tmux.conf` (nixed#45), so a guest's tmux server starts with it. A server already running reads
-it, and its open windows and the agents session take the new tab formats, with:
+status icon, drawn as a glyph of the font: a robot (working), a speech bubble (waiting), a check (done). It, the
+branch glyph and the dashboard's icons are Nerd Font's (agent-methodology's workmux config, `nerdfont: true`), so the
+terminal you look through needs a Nerd Font, alacritty's (*Install*); the dashboard's own status icons are emoji, so
+it needs an emoji font too. A host, with no desktop, needs neither. nixed links it as each guest's
+`~/.config/tmux/tmux.conf` (nixed#45), so a guest's tmux server starts with it. A server already running reads it, and
+its open windows and the agents session take the new tab formats, with:
 
 ```shell
 tmux source-file ~/.config/tmux/tmux.conf
-tmux set -u -t agents window-status-format; tmux set -u -t agents window-status-current-format
-for o in window-status-format window-status-current-format; do
-  f=$(tmux show -gv "$o" | sed 's/#{?window_flags,,}/#{?@workmux_status, #{@workmux_status},}&/')
-  for w in $(tmux list-windows -t =agents -F '#{?@workmux_token,#{window_id},}'); do tmux set -w -t "$w" "$o" "$f"; done
+for w in $(tmux list-windows -t =agents -F '#{window_id}'); do
+  tmux set -wu -t "$w" window-status-format; tmux set -wu -t "$w" window-status-current-format
 done
 tmux set -u -t agents status-left   # the UNATTENDED block comes back at the next start, or C-b u
 ```
