@@ -398,4 +398,5 @@ window mode on workmux, its step 5 slice 1).
    stays on: tried on a private server, it copies the server's tab format into each agent window at its first status
    update and puts its icon before a `#{?window_flags…}` piece (else at the end), so the format ends in an empty one.
    Nerd Font icons and no `wm-` prefix are agent-methodology's workmux config (its #237, at the user's choice);
-   alacritty takes JetBrains Mono's Nerd Font build. The attach swaps `dashboard` into the first place.
+   alacritty takes a Nerd Font build (JetBrains Mono's then, Monaspace Neon's since 2026-11-23). The attach
+   swaps `dashboard` into the first place.

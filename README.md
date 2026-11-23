@@ -8,7 +8,7 @@ named `dot-foo` gets symlinked as `.foo`.
 
 ```shell
 sudo pacman -S stow     # if not already installed
-sudo pacman -S ttf-jetbrains-mono-nerd   # alacritty's font: JetBrains Mono with Nerd Font icons (workmux's)
+sudo pacman -S otf-monaspace-nerdfonts   # alacritty's font: Monaspace Neon with Nerd Font icons (workmux's); 0.5 GB, all five Monaspace fonts
 sudo pacman -S noto-fonts-emoji          # workmux's status icons: 🤖 💬 ✅
 mkdir -p ~/.config/agent-methodology ~/.config/systemd/user ~/.local/bin   # so stow links files into them, not the directories
 stow -t "$HOME" --dotfiles -R zsh vim doom x11 git alacritty autostart dunst i3 nvim picom polybar rofi sxhkd systemd tmux vscode scripts claude
@@ -49,9 +49,10 @@ start it, or run that `sxhkd` command once now.
 
 ## Terminal
 
-Alacritty uses JetBrains Mono 12, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
-Nerd Font`: the guests' workmux draws Nerd Font icons) with 4px extra between lines, off-white
-`#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
+Alacritty uses [Monaspace](https://monaspace.githubnext.com/) Neon 12, its Nerd Font build (`sudo pacman -S
+otf-monaspace-nerdfonts`, family `Monaspace Neon NF`: the guests' workmux draws Nerd Font icons) with 4px extra
+between lines, off-white `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git
+and comments use. Alacritty shapes no ligatures, so neither Neon's nor its texture healing (a contextual alternate) show.
 Alacritty reloads `alacritty.toml` on save.
 
 For reading long output:
