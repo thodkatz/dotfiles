@@ -328,3 +328,17 @@ wait_log() {
   [[ "$(t show -gv window-status-format)" == *'#{?window_flags,,} ' ]]
   [[ "$(t show -gv window-status-current-format)" == *'#{?window_flags,,} ' ]]
 }
+
+@test "guest.conf: prefix C-s is workmux's dashboard in a popup, prefix C-t its sidebar" {
+  tmux -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents 'sleep 600'
+  [[ "$(t list-keys -T prefix C-s)" == *display-popup*'workmux dashboard'* ]]
+  [[ "$(t list-keys -T prefix C-t)" == *run-shell*'workmux sidebar'* ]]
+}
+
+@test "guest.conf: an agent's tab has workmux's branch glyph dim and its name light; another window's name is as it is" {
+  tmux -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents -n $'\uf418 w1' 'sleep 600'
+  t new-window -d -t agents: -n plain 'sleep 600'
+  fmt=$(t show -gv window-status-format)
+  [ "$(t display -p -t agents:0 "$fmt")" = $'#[fg=#928374] 0 \uf418 #[fg=#d5c4a1]w1 ' ]
+  [ "$(t display -p -t agents:1 "$fmt")" = '#[fg=#928374] 1 #[fg=#d5c4a1]plain ' ]
+}

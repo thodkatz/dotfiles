@@ -49,7 +49,7 @@ start it, or run that `sxhkd` command once now.
 ## Terminal
 
 Alacritty uses JetBrains Mono 14, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
-Nerd Font`: the guests' workmux draws Nerd Font status icons) with 4px extra between lines, off-white
+Nerd Font`: the guests' workmux draws Nerd Font icons) with 4px extra between lines, off-white
 `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
 Alacritty reloads `alacritty.toml` on save.
 
@@ -142,10 +142,13 @@ The hosts are in `~/.config/fleet/hosts` (one ssh destination per line, from thi
 
 The guest's tmux has its own config, `tmux/dot-config/tmux/guest.conf`: the gruvbox look on tmux's own keys (prefix
 `C-b`, and agent-methodology's `C-b u` switches a session's mode), windows from 0, the mouse on (the dashboard takes
-clicks), the host's name on a dimmed purple on the left, workmux's `wm-` drawn dim. The tabs carry workmux's status
-icon: workmux copies the tab format into each agent window and puts its icon before the format's
-`#{?window_flags,,}`. Its icons are Nerd Font glyphs (agent-methodology's workmux config), so the terminal you look
-through needs a Nerd Font: alacritty's is (*Install*); a host, with no desktop, needs none. nixed links it as each
+clicks), the host's name on a dimmed purple on the left, workmux's branch glyph drawn dim.
+`C-b C-s` opens workmux's dashboard in a popup over the window you are in; `C-b C-t` turns its sidebar, a column in
+every window with each agent's status, on and off (agent-methodology turns it on when it starts the tmux server). The
+tabs carry workmux's status icon (🤖 working, 💬 waiting, ✅ done): workmux copies the tab format into each agent window and puts its icon before the format's
+`#{?window_flags,,}`. The status icons are emoji; the branch glyph and the dashboard's other icons
+are Nerd Font's (agent-methodology's workmux config, `nerdfont: true`), so the terminal you look through needs a Nerd
+Font, alacritty's (*Install*), and an emoji font; a host, with no desktop, needs neither. nixed links it as each
 guest's `~/.config/tmux/tmux.conf` (nixed#45), so a guest's tmux server starts with it. A server already running
 reads it, and its open windows and the agents session take the new tab formats, with:
 
