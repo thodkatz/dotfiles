@@ -49,7 +49,7 @@ start it, or run that `sxhkd` command once now.
 
 ## Terminal
 
-Alacritty uses JetBrains Mono 14, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
+Alacritty uses JetBrains Mono 12, its Nerd Font build (`sudo pacman -S ttf-jetbrains-mono-nerd`, family `JetBrainsMono
 Nerd Font`: the guests' workmux draws Nerd Font icons) with 4px extra between lines, off-white
 `#e0e0e0` on `#141414`, and a lighter grey (`#808080`) for the secondary text Claude Code, git and comments use.
 Alacritty reloads `alacritty.toml` on save.
