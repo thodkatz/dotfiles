@@ -319,14 +319,14 @@ wait_log() {
   [ "$output" = $'pane\tmine\npane\tfleetwood\nwindow\tmine\nstate\tfleet' ]
 }
 
-@test "guest.conf: loads clean on tmux's own keys, the mouse on, windows from 0, the tabs ending in workmux's anchor" {
+@test "guest.conf: loads clean on tmux's own keys, the mouse on, windows from 0, the tabs ending in workmux's status" {
   run tmux -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents 'sleep 600'
   [ "$status" -eq 0 ] && [ -z "$output" ]
   [ "$(t show -gv prefix)" = C-b ]
   [ "$(t show -gv mouse)" = on ]
   [ "$(t show -gv base-index)" = 0 ]
-  [[ "$(t show -gv window-status-format)" == *'#{?window_flags,,} ' ]]
-  [[ "$(t show -gv window-status-current-format)" == *'#{?window_flags,,} ' ]]
+  [[ "$(t show -gv window-status-format)" == *'#{?@workmux_status, #{E:@tab_icon},} ' ]]
+  [[ "$(t show -gv window-status-current-format)" == *'#{?@workmux_status, #{E:@tab_icon},} ' ]]
 }
 
 @test "guest.conf: prefix C-s is workmux's dashboard in a popup, prefix C-t its sidebar" {
@@ -344,4 +344,20 @@ wait_log() {
   [ "$(t -u display -p -t agents:1 "$fmt")" = '#[fg=#928374] 1 #[fg=#d5c4a1]plain ' ]
   [ "$(t -u display -p -t agents:0 "$cur")" = "#[bg=#504945,fg=#928374] 0 $g #[fg=#fbf1c7,bold]w1 " ]
   [ "$(t -u display -p -t agents:1 "$cur")" = '#[bg=#504945,fg=#928374] 1 #[fg=#fbf1c7,bold]plain ' ]
+}
+
+@test "guest.conf: a tab draws workmux's status as a glyph of the font, in its colour; an unknown status as it is" {
+  tmux -u -L "$FLEET_TMUX_SOCKET" -f "$ROOT/tmux/dot-config/tmux/guest.conf" new-session -d -s agents -n w 'sleep 600'
+  fmt=$(t -u show -gv window-status-format) cur=$(t -u show -gv window-status-current-format)
+  # by their bytes: the emoji, then U+F06A9, U+F0361, U+F0134
+  while read -r emoji want; do
+    t -u set -w -t agents:0 @workmux_status "$(printf "$emoji")"
+    [ "$(t -u display -p -t agents:0 "$fmt")" = "#[fg=#928374] 0 #[fg=#d5c4a1]w $(printf "$want") " ]
+    [ "$(t -u display -p -t agents:0 "$cur")" = "#[bg=#504945,fg=#928374] 0 #[fg=#fbf1c7,bold]w $(printf "$want") " ]
+  done <<'EOF'
+\xf0\x9f\xa4\x96 #[fg=#8ec07c]\xf3\xb0\x9a\xa9
+\xf0\x9f\x92\xac #[fg=#fabd2f]\xf3\xb0\x8d\xa1
+\xe2\x9c\x85 #[fg=#b8bb26]\xf3\xb0\x84\xb4
+x x
+EOF
 }
