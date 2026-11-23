@@ -9,26 +9,26 @@ history = 10000
 [selection]
 save_to_clipboard = true
 
-# JetBrains Mono (ttf-jetbrains-mono)
+# Monaspace Neon, its Nerd Font build (otf-monaspace-nerdfonts)
 [font]
 size = 12
 # extra space between lines, for reading prose
 offset = { x = 0, y = 4 }
 
 [font.bold]
-family = "JetBrainsMono Nerd Font"
+family = "Monaspace Neon NF"
 style = "Bold"
 
 [font.bold_italic]
-family = "JetBrainsMono Nerd Font"
+family = "Monaspace Neon NF"
 style = "Bold Italic"
 
 [font.italic]
-family = "JetBrainsMono Nerd Font"
+family = "Monaspace Neon NF"
 style = "Italic"
 
 [font.normal]
-family = "JetBrainsMono Nerd Font"
+family = "Monaspace Neon NF"
 style = "Regular"
 
 # Tokyo Night accents on near-black, with off-white text: a little short of full contrast, easier on long sessions
