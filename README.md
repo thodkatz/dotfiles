@@ -47,6 +47,12 @@ the new level in a dunst notification. It needs `sudo pacman -S sxhkd brightness
 `pactl`, which works on PulseAudio and PipeWire); if brightness doesn't change, add yourself to the `video` group. Log in again to
 start it, or run that `sxhkd` command once now.
 
+`.xinitrc` also sets the screen layout before dwm starts, for the three docks: no external monitor (the laptop's
+screen, 192 dpi); one (it alone as primary, the laptop's screen off, 96 dpi); two (the laptop's screen off, the
+ThinkVision primary and the Dell extending it on the right). The ports' names change from dock to dock, so the Dell is
+picked by its EDID name containing `DELL` (check with `xrandr --prop`); if neither has it, the first output xrandr
+lists is the primary. A new layout shows after logging in again.
+
 ## Terminal
 
 Alacritty uses [Monaspace](https://monaspace.githubnext.com/) Neon 12, its Nerd Font build (`sudo pacman -S
