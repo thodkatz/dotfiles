@@ -14,7 +14,7 @@ dex --autostart --environment dwm
 # set the screen layout before dwm starts, so it sees the final monitors and never
 # has to migrate windows off a screen that disappears. The docks give three setups:
 # no external monitor, one (it alone, laptop off), or two (laptop off, the ThinkVision
-# primary and the Dell extending it on the right). The outputs' names vary with the
+# primary and the Dell extending it on the right, turned to portrait). The outputs' names vary with the
 # dock/port (DP-1-1, DP-3-1, ...), so the Dell is told by the name in its EDID.
 
 # each connected external output, as "output<TAB>monitor name" (name from the EDID)
@@ -46,6 +46,10 @@ external_outputs() {
         END { flush() }'
 }
 
+# the Dell stands vertically: xrandr turns its picture to match (right: clockwise;
+# left came out upside down on it, 2026-11-28)
+right_rotate=right
+
 mapfile -t ext < <(external_outputs)
 if (( ${#ext[@]} >= 2 )); then
     main=${ext[0]%%$'\t'*} right=${ext[1]%%$'\t'*}
@@ -57,7 +61,7 @@ if (( ${#ext[@]} >= 2 )); then
         if [[ $o != "$right" ]]; then main=$o; break; fi
     done
     xrandr --output "$main" --auto --primary --pos 0x0 \
-           --output "$right" --auto --right-of "$main" \
+           --output "$right" --auto --rotate "$right_rotate" --right-of "$main" \
            --output eDP-1 --off
     xrdb -merge <(echo "Xft.dpi: 96")
 elif (( ${#ext[@]} == 1 )); then
