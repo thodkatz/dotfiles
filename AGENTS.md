@@ -23,10 +23,12 @@ and for Claude Code's status line the guests as well, managed with GNU Stow. `RE
   a change in `tmux/` reaches them on their next pull. A plugin added or removed also needs nixed's plugin list
   changed, as a nixed PR.
 - **The trunk is `master`,** not `main`: the hosts' checkouts track it. GitHub; the repo is public, with no CI.
-- **Nothing is deployed by a merge.** The laptop and each host apply it by `git pull` in `~/repos/dotfiles`, plus
+- **No PRs: commit straight to `master` and push.** Work in a worktree as usual, then `git push origin
+  HEAD:master`; no branch on `origin`, no PR, no review round. (User's decision, 2026-11-28.)
+- **Nothing is deployed by a push.** The laptop and each host apply it by `git pull` in `~/repos/dotfiles`, plus
   `stow -R <package>` for a new file (a guest has no stow: it links the renderer from its checkout). A running fleet
-  session keeps the `fleet` it started with: a change to it shows after `tmux kill-session -t fleet` and `fleet`. A
-  PR's body says what the user runs on the laptop and the hosts: a pull, a `stow -R`, `prefix r`, `fleet` again, or
+  session keeps the `fleet` it started with: a change to it shows after `tmux kill-session -t fleet` and `fleet`. The
+  commit message says what the user runs on the laptop and the hosts: a pull, a `stow -R`, `prefix r`, `fleet` again, or
   nixed's switch for a plugin change.
 - **Notes** go in `docs/knowledge/` (index: its `README.md`); deferred items in `BACKLOG.md`.
 
