@@ -18,3 +18,7 @@ XF86MonBrightnessUp
 
 XF86MonBrightnessDown
 	media-key brightness down
+
+# the display key (Fn+F7): set the screens again after docking or re-plugging a monitor
+XF86Display
+	screen-layout

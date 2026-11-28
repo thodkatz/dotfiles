@@ -47,12 +47,13 @@ the new level in a dunst notification. It needs `sudo pacman -S sxhkd brightness
 `pactl`, which works on PulseAudio and PipeWire); if brightness doesn't change, add yourself to the `video` group. Log in again to
 start it, or run that `sxhkd` command once now.
 
-`.xinitrc` also sets the screen layout before dwm starts, for the three docks: no external monitor (the laptop's
-screen, 192 dpi); one (it alone as primary, the laptop's screen off, 96 dpi); two (the laptop's screen off, the
-ThinkVision primary and the Dell extending it on the right, in portrait: `right_rotate=right` in `.xinitrc` (`left` came
-out upside down)). The ports' names change from dock to dock, so the Dell is
-picked by its EDID name containing `DELL` (check with `xrandr --prop`); if neither has it, the first output xrandr
-lists is the primary. A new layout shows after logging in again.
+`screen-layout` (`scripts`) sets the screens for whatever is plugged in: `.xinitrc` runs it at login, and the display
+key (Fn+F7, `XF86Display` in `media-keys`) runs it again after docking or re-plugging a monitor. No external monitor:
+the laptop's screen, 192 dpi. One: it is the primary and the laptop's screen mirrors it (scaled), 96 dpi. Two: the
+ThinkVision primary, the Dell on its right in portrait (`dell_rotate=right`; `left` came out upside down), the
+laptop's screen mirroring the ThinkVision. The outputs' names change with the dock and the ports, so the Dell is picked
+by its EDID name containing `DELL` (`xrandr --prop`); with two and no Dell, the first output is the primary. Every
+other output is switched off. `screen-layout -n` prints the `xrandr` command without running it.
 
 ## Terminal
 

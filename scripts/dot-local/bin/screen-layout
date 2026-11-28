@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# screen-layout: set the screens for whatever is plugged in now. .xinitrc runs it at login; run it again (or press
+# the display key, Fn+F7, bound in ~/.config/sxhkd/media-keys) after docking or re-plugging a monitor.
+#   no external monitor: the laptop's screen alone, 192 dpi;
+#   one: it is the primary, the laptop's screen mirrors it, 96 dpi;
+#   two: the ThinkVision primary, the Dell on its right in portrait, the laptop's screen mirrors the ThinkVision.
+# The outputs' names change with the dock, its port and the laptop's port (DP-1-1, DP-3-1, ...), so the Dell is
+# told by the name in its EDID ("DELL ..."); with two and no Dell, the first is primary, the second unrotated.
+# Every other output is switched off, a stale one a re-dock left configured included.
+# Usage: screen-layout [-n]   (-n: print the xrandr command, change nothing)
+set -uo pipefail
+
+dell_rotate=right   # the Dell stands vertically; left came out upside down on it (2026-11-28)
+dry=; [ "${1:-}" = -n ] && dry=1
+
+# each connected external output, as "output<TAB>monitor name" (name from the EDID)
+external_outputs() {
+  xrandr --prop | awk '
+    function name(hex,   k, off, i, c, s) {
+      for (k = 0; k < 4; k++) {
+        off = 108 + 36 * k   # descriptors at bytes 54, 72, 90, 108
+        if (substr(hex, off + 1, 10) != "000000fc00") continue
+        s = ""
+        for (i = 0; i < 13; i++) {
+          c = hexval[substr(hex, off + 11 + 2 * i, 2)]
+          if (c == 10) break
+          s = s sprintf("%c", c)
+        }
+        sub(/ +$/, "", s)
+        return s
+      }
+      return ""
+    }
+    function flush() { if (out != "" && connected && out != "eDP-1") print out "\t" name(edid) }
+    BEGIN { for (i = 0; i < 256; i++) hexval[sprintf("%02x", i)] = i }
+    /^[^ \t]/ { flush(); out = $1; connected = ($2 == "connected"); edid = ""; inedid = 0; next }
+    /^\tEDID:/ { inedid = 1; next }
+    inedid && /^\t\t[0-9a-f]+$/ { gsub(/[ \t]/, ""); edid = edid $0; next }
+    { inedid = 0 }
+    END { flush() }'
+}
+
+# an output's preferred mode (the one marked +), e.g. 1920x1080
+preferred() { xrandr --current | awk -v o="$1" '$1 == o { f = 1; next } f && /^[^ ]/ { exit } f && /\+/ { print $1; exit }'; }
+
+mapfile -t ext < <(external_outputs)
+main='' right='' rot=normal
+for e in "${ext[@]}"; do
+  if [[ ${e#*$'\t'} == *[Dd][Ee][Ll][Ll]* && -z $right && ${#ext[@]} -ge 2 ]]; then right=${e%%$'\t'*}; rot=$dell_rotate; fi
+done
+for e in "${ext[@]}"; do
+  o=${e%%$'\t'*}
+  if [[ $o != "$right" ]]; then
+    if [[ -z $main ]]; then main=$o; elif [[ -z $right ]]; then right=$o; fi
+  fi
+done
+
+args=() used=(eDP-1)
+if [[ -z $main ]]; then
+  args=(--output eDP-1 --auto --primary --pos 0x0 --rotate normal --scale 1x1)
+  dpi=192
+else
+  args=(--output "$main" --auto --primary --pos 0x0 --rotate normal); used+=("$main")
+  [[ -n $right ]] && { args+=(--output "$right" --auto --rotate "$rot" --right-of "$main"); used+=("$right"); }
+  mode=$(preferred "$main")
+  args+=(--output eDP-1 --auto --rotate normal --same-as "$main" ${mode:+--scale-from "$mode"})
+  dpi=96
+fi
+for o in $(xrandr --current | awk '$2 == "connected" || $2 == "disconnected" { print $1 }'); do
+  [[ " ${used[*]} " == *" $o "* ]] || args+=(--output "$o" --off)
+done
+
+echo "xrandr ${args[*]}"
+[[ -n $dry ]] && exit 0
+xrandr "${args[@]}"
+xrdb -merge <(echo "Xft.dpi: $dpi")

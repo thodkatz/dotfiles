@@ -11,65 +11,11 @@ gpg-agent --daemon
 sxhkd -c ~/.config/sxhkd/media-keys &   # volume and brightness keys
 dex --autostart --environment dwm
 
-# set the screen layout before dwm starts, so it sees the final monitors and never
-# has to migrate windows off a screen that disappears. The docks give three setups:
-# no external monitor, one (it alone, laptop off), or two (laptop off, the ThinkVision
-# primary and the Dell extending it on the right, turned to portrait). The outputs' names vary with the
-# dock/port (DP-1-1, DP-3-1, ...), so the Dell is told by the name in its EDID.
-
-# each connected external output, as "output<TAB>monitor name" (name from the EDID)
-external_outputs() {
-    xrandr --prop | awk '
-        function name(hex,   k, off, i, c, s) {
-            for (k = 0; k < 4; k++) {
-                off = 108 + 36 * k   # descriptors at bytes 54, 72, 90, 108
-                if (substr(hex, off + 1, 10) != "000000fc00") continue
-                s = ""
-                for (i = 0; i < 13; i++) {
-                    c = hexval[substr(hex, off + 11 + 2 * i, 2)]
-                    if (c == 10) break
-                    s = s sprintf("%c", c)
-                }
-                sub(/ +$/, "", s)
-                return s
-            }
-            return ""
-        }
-        function flush() {
-            if (out != "" && connected && out != "eDP-1") print out "\t" name(edid)
-        }
-        BEGIN { for (i = 0; i < 256; i++) hexval[sprintf("%02x", i)] = i }
-        /^[^ \t]/ { flush(); out = $1; connected = ($2 == "connected"); edid = ""; inedid = 0; next }
-        /^\tEDID:/ { inedid = 1; next }
-        inedid && /^\t\t[0-9a-f]+$/ { gsub(/[ \t]/, ""); edid = edid $0; next }
-        { inedid = 0 }
-        END { flush() }'
-}
-
-# the Dell stands vertically: xrandr turns its picture to match (right: clockwise;
-# left came out upside down on it, 2026-11-28)
-right_rotate=right
-
-mapfile -t ext < <(external_outputs)
-if (( ${#ext[@]} >= 2 )); then
-    main=${ext[0]%%$'\t'*} right=${ext[1]%%$'\t'*}
-    for e in "${ext[@]}"; do
-        if [[ ${e#*$'\t'} == *[Dd][Ee][Ll][Ll]* ]]; then right=${e%%$'\t'*}; fi
-    done
-    for e in "${ext[@]}"; do
-        o=${e%%$'\t'*}
-        if [[ $o != "$right" ]]; then main=$o; break; fi
-    done
-    xrandr --output "$main" --auto --primary --pos 0x0 \
-           --output "$right" --auto --rotate "$right_rotate" --right-of "$main" \
-           --output eDP-1 --off
-    xrdb -merge <(echo "Xft.dpi: 96")
-elif (( ${#ext[@]} == 1 )); then
-    xrandr --output "${ext[0]%%$'\t'*}" --auto --primary --pos 0x0 --output eDP-1 --off
-    xrdb -merge <(echo "Xft.dpi: 96")
-else
-    xrandr --output eDP-1 --auto --primary
-    xrdb -merge <(echo "Xft.dpi: 192")
-fi
+# set the screen layout before dwm starts, so it sees the final monitors and never has to migrate windows off a
+# screen that disappears: screen-layout (scripts package) picks it from what is plugged in. Called by its path in
+# this checkout when ~/.local/bin doesn't have it yet (scripts not re-stowed)
+layout=$HOME/.local/bin/screen-layout
+[[ -x $layout ]] || layout="$(dirname "$(readlink -f "$HOME/.xinitrc")")/../scripts/dot-local/bin/screen-layout"
+"$layout"
 
 exec dwm
