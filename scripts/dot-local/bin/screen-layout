@@ -42,6 +42,8 @@ external_outputs() {
 
 # an output's preferred mode (the one marked +), e.g. 1920x1080
 preferred() { xrandr --current | awk -v o="$1" '$1 == o { f = 1; next } f && /^[^ ]/ { exit } f && /\+/ { print $1; exit }'; }
+# whether an output lists a mode
+has_mode() { xrandr --current | awk -v o="$1" -v m="$2" '$1 == o { f = 1; next } f && /^[^ ]/ { exit } f && $1 == m { r = 1 } END { exit !r }'; }
 
 mapfile -t ext < <(external_outputs)
 main='' right='' rot=normal
@@ -62,8 +64,14 @@ if [[ -z $main ]]; then
 else
   args=(--output "$main" --auto --primary --pos 0x0 --rotate normal); used+=("$main")
   [[ -n $right ]] && { args+=(--output "$right" --auto --rotate "$rot" --right-of "$main"); used+=("$right"); }
+  # the mirror runs the panel at the primary's own mode (the panel scales it): an xrandr transform (--scale-from)
+  # makes the mouse pointer flicker on the shared screen with the modesetting driver (seen 2026-11-28)
   mode=$(preferred "$main")
-  args+=(--output eDP-1 --auto --rotate normal --same-as "$main" ${mode:+--scale-from "$mode"})
+  if [[ -n $mode ]] && has_mode eDP-1 "$mode"; then
+    args+=(--output eDP-1 --mode "$mode" --scale 1x1 --rotate normal --same-as "$main")
+  else
+    args+=(--output eDP-1 --auto --rotate normal --same-as "$main" ${mode:+--scale-from "$mode"})
+  fi
   dpi=96
 fi
 for o in $(xrandr --current | awk '$2 == "connected" || $2 == "disconnected" { print $1 }'); do

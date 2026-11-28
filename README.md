@@ -49,7 +49,8 @@ start it, or run that `sxhkd` command once now.
 
 `screen-layout` (`scripts`) sets the screens for whatever is plugged in: `.xinitrc` runs it at login, and the display
 key (Fn+F7, `XF86Display` in `media-keys`) runs it again after docking or re-plugging a monitor. No external monitor:
-the laptop's screen, 192 dpi. One: it is the primary and the laptop's screen mirrors it (scaled), 96 dpi. Two: the
+the laptop's screen, 192 dpi. One: it is the primary and the laptop's screen mirrors it (at the primary's mode, the panel scaling it: an
+xrandr `--scale-from` transform made the mouse pointer flicker), 96 dpi. Two: the
 ThinkVision primary, the Dell on its right in portrait (`dell_rotate=right`; `left` came out upside down), the
 laptop's screen mirroring the ThinkVision. The outputs' names change with the dock and the ports, so the Dell is picked
 by its EDID name containing `DELL` (`xrandr --prop`); with two and no Dell, the first output is the primary. Every
