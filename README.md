@@ -49,7 +49,7 @@ start it, or run that `sxhkd` command once now.
 
 `.xinitrc` also sets the screen layout before dwm starts, for the three docks: no external monitor (the laptop's
 screen, 192 dpi); one (it alone as primary, the laptop's screen off, 96 dpi); two (the laptop's screen off, the
-ThinkVision primary and the Dell extending it on the right, in portrait: `right_rotate=left` in `.xinitrc`, `right` if
+ThinkVision primary and the Dell extending it on the right, in portrait: `right_rotate=right` in `.xinitrc`, `left` if
 its picture is upside down). The ports' names change from dock to dock, so the Dell is
 picked by its EDID name containing `DELL` (check with `xrandr --prop`); if neither has it, the first output xrandr
 lists is the primary. A new layout shows after logging in again.

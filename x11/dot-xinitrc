@@ -46,9 +46,9 @@ external_outputs() {
         END { flush() }'
 }
 
-# the Dell stands vertically: xrandr turns its picture to match (left: counter-clockwise; right if it's
-# upside down)
-right_rotate=left
+# the Dell stands vertically: xrandr turns its picture to match (right: clockwise; left if it's
+# upside down; checked on the Dell, 2026-11-28)
+right_rotate=right
 
 mapfile -t ext < <(external_outputs)
 if (( ${#ext[@]} >= 2 )); then
